@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Aplicación Flask MiProyecto">
+    <title>{{ project_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <main class="card">
+      <span class="eyebrow">Flask · SQLAlchemy</span>
+      <h1>{{ project_name }}</h1>
+      <p>La aplicación está lista. Usa esta base para empezar a construir tu proyecto.</p>
+      <p>La conexión a la base de datos se configura mediante <code>DATABASE_URL</code>.</p>
+      <span class="status">Aplicación en funcionamiento</span>
+    </main>
+  </body>
+</html>

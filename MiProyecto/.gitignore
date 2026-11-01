@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Local configuration and databases
+.env
+*.db
+instance/
+
+# Tooling
+.pytest_cache/
+.coverage
+.DS_Store
