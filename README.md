@@ -36,7 +36,7 @@ Aplicación inicial con Flask, Flask-SQLAlchemy y soporte para PostgreSQL. En de
 
 ## Base de datos
 
-La configuración local usa `sqlite:///mi_proyecto.db` (archivo en `instance/`). Para PostgreSQL, define `DATABASE_URL` en `.env`; por ejemplo, `postgresql://usuario:contraseña@localhost:5432/mi_proyecto`.
+La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. El valor local actual apunta a PostgreSQL; sustituye `host` por el hostname real de tu servidor. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite.
 
 El modelo de ejemplo está en `app/models.py`. Para un proyecto real, añade migraciones con Flask-Migrate antes de gestionar cambios de esquema; no se crean tablas automáticamente al arrancar.
 

@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: mi-proyecto
+    name: remate
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn main:app"
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
