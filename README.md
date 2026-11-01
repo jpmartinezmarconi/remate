@@ -1,6 +1,6 @@
-# MiProyecto
+# Remate Martínez Online
 
-Aplicación inicial con Flask, Flask-SQLAlchemy y soporte para PostgreSQL. En desarrollo local usa SQLite por defecto; en Render se configura la conexión mediante variables de entorno.
+Plataforma web de subastas construida con Flask, SQLAlchemy y PostgreSQL. Incluye registro e inicio de sesión, sesiones seguras, listado de lotes activos y pujas autenticadas con validación del precio actual. En local puede usarse SQLite; en producción se configura PostgreSQL por variables de entorno.
 
 ## Requisitos
 
@@ -34,11 +34,21 @@ Aplicación inicial con Flask, Flask-SQLAlchemy y soporte para PostgreSQL. En de
 
    Abre `http://127.0.0.1:5000`. El endpoint de comprobación está en `/api/health`.
 
-## Base de datos
+## Base de datos y migraciones
 
 La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. El valor local actual apunta a PostgreSQL; sustituye `host` por el hostname real de tu servidor. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite.
 
-El modelo de ejemplo está en `app/models.py`. Para un proyecto real, añade migraciones con Flask-Migrate antes de gestionar cambios de esquema; no se crean tablas automáticamente al arrancar.
+Inicializa las migraciones una sola vez y aplica el esquema:
+
+```bash
+flask --app main db init
+flask --app main db migrate -m "Esquema inicial"
+flask --app main db upgrade
+```
+
+Para cambios posteriores, ejecuta `flask --app main db migrate -m "Descripción del cambio"` y `flask --app main db upgrade`. No se crean tablas automáticamente al arrancar.
+
+Los modelos están en `models/`. Las rutas de autenticación están bajo `/auth/`; el inicio lista las subastas con fecha de cierre futura y cada detalle permite ofertar tras iniciar sesión.
 
 ## Despliegue en Render
 

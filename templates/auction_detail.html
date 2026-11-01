@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ auction.title }} · Remate Martínez Online{% endblock %}
+{% block content %}
+<section class="container py-5">
+  <a href="{{ url_for('auction.home') }}" class="back-link">← Volver a las subastas</a>
+  <div class="row g-5 mt-1">
+    <div class="col-lg-7">
+      {% if auction.image_url %}<img class="detail-image" src="{{ auction.image_url }}" alt="{{ auction.title }}">{% else %}<div class="detail-image placeholder-art"><span>RM</span></div>{% endif %}
+      <div class="mt-4"><span class="eyebrow text-clay">LOTE Nº {{ '%04d'|format(auction.id) }}</span><h1 class="display-6 fw-bold mt-2">{{ auction.title }}</h1><p class="text-secondary detail-description">{{ auction.description }}</p></div>
+    </div>
+    <div class="col-lg-5"><aside class="bid-panel">
+      <span class="eyebrow text-clay">{% if auction.is_active %}SUBASTA EN CURSO{% else %}SUBASTA FINALIZADA{% endif %}</span>
+      <p class="text-secondary mt-4 mb-1">Precio inicial <strong class="text-dark">{{ auction.starting_price|uyu }}</strong></p>
+      <small class="text-secondary">OFERTA ACTUAL</small><div class="detail-price">{{ auction.current_price|uyu }}</div>
+      <div class="closing-box mt-3"><span>FECHA DE CIERRE</span><strong>{{ auction.closes_at.strftime('%d/%m/%Y · %H:%M') }} h</strong></div>
+      {% if auction.is_active %}
+        {% if current_user %}
+          <form method="post" action="{{ url_for('auction.place_bid', auction_id=auction.id) }}" class="mt-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="amount" class="form-label">Tu oferta (UYU)</label><div class="input-group input-group-lg"><span class="input-group-text">$U</span><input id="amount" name="amount" type="number" class="form-control" min="0.01" step="0.01" required placeholder="Monto superior a {{ auction.current_price }}"></div><div class="form-text">Debe superar {{ auction.current_price|uyu }}.</div><button class="btn btn-clay btn-lg rounded-pill w-100 mt-3">Hacer una oferta</button></form>
+        {% else %}<a class="btn btn-forest btn-lg rounded-pill w-100 mt-4" href="{{ url_for('auth.login', next=request.path) }}">Ingresá para ofertar</a>{% endif %}
+      {% else %}<div class="alert alert-secondary mt-4 mb-0">Este remate ya cerró.</div>{% endif %}
+      <div class="seller-note mt-4">Remate Martínez Online · Una tradición uruguaya.</div>
+    </aside></div>
+  </div>
+  {% if auction.bids %}<div class="mt-5"><h2 class="h4">Últimas ofertas</h2><div class="list-group list-group-flush bid-list">{% for bid in auction.bids|sort(attribute='created_at', reverse=true) %}<div class="list-group-item d-flex justify-content-between"><span>{{ bid.bidder.username }}</span><strong>{{ bid.amount|uyu }}</strong></div>{% endfor %}</div></div>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Subastas activas · Remate Martínez Online{% endblock %}
+{% block content %}
+<section class="hero-band">
+  <div class="container py-5 py-lg-6">
+    <div class="row align-items-center g-4">
+      <div class="col-lg-7">
+        <span class="eyebrow">TRADICIÓN QUE SIGUE HACIENDO HISTORIA</span>
+        <h1 class="display-3 fw-bold mt-3 mb-3">Encontrá tu próximo <span class="text-clay">gran hallazgo.</span></h1>
+        <p class="lead text-secondary mb-4">Piezas únicas, oportunidades reales. Participá de nuestros remates online desde cualquier rincón del Uruguay.</p>
+        <a href="#subastas" class="btn btn-clay btn-lg rounded-pill px-4">Explorar subastas <span aria-hidden="true">↓</span></a>
+      </div>
+      <div class="col-lg-5 d-none d-lg-block"><div class="hero-note"><span class="note-kicker">EL PRÓXIMO REMATE</span><strong>Puede ser tuyo.</strong><span>Ofertá con confianza. Comprá con historia.</span><div class="note-line"></div><small>MONTEVIDEO · URUGUAY</small></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5" id="subastas">
+  <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-3 mb-4">
+    <div><span class="eyebrow text-clay">OPORTUNIDADES EN CURSO</span><h2 class="section-title mt-2 mb-0">Subastas activas</h2></div>
+    <span class="text-secondary small">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }} disponible{{ '' if auctions|length == 1 else 's' }}</span>
+  </div>
+
+  {% if auctions %}
+    <div class="row g-4">
+      {% for auction in auctions %}
+        <div class="col-sm-6 col-xl-4">
+          <article class="card auction-card h-100">
+            <a class="auction-image-wrap" href="{{ url_for('auction.detail', auction_id=auction.id) }}" aria-label="Ver {{ auction.title }}">
+              {% if auction.image_url %}<img src="{{ auction.image_url }}" class="auction-image" alt="{{ auction.title }}" loading="lazy">{% else %}<div class="auction-image placeholder-art"><span>RM</span></div>{% endif %}
+              <span class="live-tag"><span></span> EN REMATE</span>
+            </a>
+            <div class="card-body p-4 d-flex flex-column">
+              <span class="lot-number">LOTE Nº {{ '%04d'|format(auction.id) }}</span>
+              <h3 class="h5 mt-2 mb-2"><a class="stretched-link text-decoration-none text-dark" href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></h3>
+              <p class="text-secondary small auction-summary">{{ auction.description|striptags|truncate(105) }}</p>
+              <div class="mt-auto pt-3 border-top d-flex justify-content-between align-items-end">
+                <div><small class="d-block text-secondary">OFERTA ACTUAL</small><strong class="price">{{ auction.current_price|uyu }}</strong></div>
+                <div class="text-end"><small class="d-block text-secondary">CIERRA</small><span class="closing-date">{{ auction.closes_at.strftime('%d/%m · %H:%M') }} h</span></div>
+              </div>
+            </div>
+          </article>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state text-center py-5 px-3"><div class="empty-icon">⌂</div><h3 class="h4 mt-3">Pronto habrá nuevos remates</h3><p class="text-secondary mb-0">Estamos preparando próximos lotes. Volvé a visitarnos.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

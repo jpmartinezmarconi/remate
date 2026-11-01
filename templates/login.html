@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Ingresar · Remate Martínez Online{% endblock %}
+{% block content %}
+<section class="container auth-wrap py-5"><div class="auth-card mx-auto">
+  <span class="eyebrow text-clay">QUÉ BUENO TENERTE DE VUELTA</span><h1 class="h2 mt-2 mb-2">Ingresá a tu cuenta</h1><p class="text-secondary mb-4">Seguí tus lotes y participá en los remates.</p>
+  <form method="post" novalidate><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-3"><label for="identity" class="form-label">Usuario o correo</label><input id="identity" name="identity" class="form-control form-control-lg" autocomplete="username" required value="{{ request.form.get('identity', '') }}"></div>
+    <div class="mb-4"><label for="password" class="form-label">Contraseña</label><input id="password" name="password" type="password" class="form-control form-control-lg" autocomplete="current-password" required></div>
+    <button class="btn btn-forest btn-lg w-100 rounded-pill">Ingresar</button>
+  </form><p class="text-center text-secondary mt-4 mb-0">¿Sos nuevo/a? <a href="{{ url_for('auth.register') }}">Creá tu cuenta</a></p>
+</div></section>
+{% endblock %}
