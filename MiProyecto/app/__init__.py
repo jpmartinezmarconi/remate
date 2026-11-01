@@ -8,7 +8,7 @@ from config import Config
 
 def create_app(config_class: type = Config) -> Flask:
     """Create and configure the Flask application."""
-    app = Flask(__name__)
+    app = Flask(__name__, template_folder="../templates", static_folder="../static")
     app.config.from_object(config_class)
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
