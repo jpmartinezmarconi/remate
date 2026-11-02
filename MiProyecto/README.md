@@ -31,7 +31,7 @@ El área privada `/area-privada` permite administrar los lotes, grupos, comisió
 
 El panel de usuario `/cuenta` permite actualizar sus datos, revisar las subastas en que participó y las ganadas, y registrar una forma de pago para los lotes adjudicados. Tarjeta, transferencia y MercadoPago quedan como solicitudes pendientes; no se procesan cobros ni se guardan datos de tarjetas.
 
-La portada explica el funcionamiento del remate, incluyendo la comisión del 16,67%, la modalidad por lote o por unidad, y las opciones de envío y retiro. El menú principal ordena los accesos a Inicio, cuenta, subastas activas, artículos, funcionamiento, contacto y área privada.
+La portada explica el funcionamiento del remate, incluyendo la comisión del 16,67%, la modalidad por lote o por unidad, y las opciones de envío y retiro. El menú principal presenta Inicio, Ingresar/Crear cuenta (o Mi cuenta), Subastas activas, Artículos en remate, Cómo funciona, Contacto y Área privada, en ese orden. Su barra utiliza cristal translúcido con reflejos neón azules y rojos.
 
 ## Desplegar en Render
 
