@@ -57,6 +57,6 @@ El archivo `render.yaml` configura el servicio web, Gunicorn y la ruta de salud.
 ## Estructura
 
 - `app/`: fábrica Flask, rutas, modelos y extensión de base de datos.
-- `templates/` y `static/`: interfaz web.
+- `templates/` y `static/`: interfaz web adaptable a móviles y recursos gráficos, incluido el logo de Remate Martínez y un QR de muestra no escaneable para el futuro bot de Telegram.
 - `config.py`: configuración desde variables de entorno.
 - `main.py`: punto de entrada local y WSGI.

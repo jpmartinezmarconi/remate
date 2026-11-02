@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 280" role="img" aria-labelledby="title description">
+  <title id="title">Remate Martínez</title>
+  <desc id="description">Martillo de remate separado del borde, dentro de una insignia circular de cristal con volumen</desc>
+  <defs>
+    <linearGradient id="glass" x1="30" y1="18" x2="250" y2="264" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".96"/>
+      <stop offset=".23" stop-color="#f8fcff" stop-opacity=".78"/>
+      <stop offset=".58" stop-color="#c5e1f7" stop-opacity=".58"/>
+      <stop offset=".82" stop-color="#e8f4fd" stop-opacity=".86"/>
+      <stop offset="1" stop-color="#9fc6e8" stop-opacity=".94"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="44" y1="33" x2="233" y2="248" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"/>
+      <stop offset=".22" stop-color="#d7efff"/>
+      <stop offset=".52" stop-color="#6f9fc9"/>
+      <stop offset=".78" stop-color="#fff"/>
+      <stop offset="1" stop-color="#84afd5"/>
+    </linearGradient>
+    <linearGradient id="bevel" x1="38" y1="25" x2="235" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".94"/>
+      <stop offset=".46" stop-color="#fff" stop-opacity=".08"/>
+      <stop offset=".7" stop-color="#15558d" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity=".88"/>
+    </linearGradient>
+    <linearGradient id="gavel" x1="102" y1="67" x2="172" y2="155" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff7986"/>
+      <stop offset=".36" stop-color="#ed1838"/>
+      <stop offset=".7" stop-color="#c20c2b"/>
+      <stop offset="1" stop-color="#83061f"/>
+    </linearGradient>
+    <linearGradient id="base" x1="99" y1="154" x2="179" y2="175" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4385bb"/>
+      <stop offset=".45" stop-color="#0b4b86"/>
+      <stop offset="1" stop-color="#062c53"/>
+    </linearGradient>
+    <filter id="depth" x="-25%" y="-25%" width="150%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#082e50" flood-opacity=".28"/>
+    </filter>
+    <filter id="innerGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5"/>
+    </filter>
+    <clipPath id="glassClip">
+      <circle cx="140" cy="140" r="118"/>
+    </clipPath>
+  </defs>
+
+  <g filter="url(#depth)">
+    <circle cx="140" cy="140" r="126" fill="#326b99" opacity=".14"/>
+    <circle cx="140" cy="136" r="124" fill="url(#glass)" stroke="url(#edge)" stroke-width="8"/>
+    <circle cx="140" cy="136" r="116" fill="none" stroke="url(#bevel)" stroke-width="3"/>
+    <circle cx="140" cy="136" r="109" fill="none" stroke="#fff" stroke-opacity=".72" stroke-width="1.5"/>
+    <g clip-path="url(#glassClip)">
+      <path d="M37 89C56 48 94 23 139 20c-27 21-45 47-53 77-11 38 1 77 30 116-51-14-86-59-86-110 0-5 2-10 7-14Z" fill="#fff" opacity=".32"/>
+      <path d="M174 24c44 14 77 55 82 104-17-25-38-42-64-52-30-11-63-7-93 8 16-32 41-53 75-60Z" fill="#fff" opacity=".3"/>
+      <path d="M50 198c36 18 77 25 117 17 26-5 51-16 73-33-16 43-55 73-101 77-39 3-76-17-97-51Z" fill="#8bc3ed" opacity=".2"/>
+      <path d="M43 69c21-31 55-51 93-55" fill="none" stroke="#fff" stroke-linecap="round" stroke-opacity=".85" stroke-width="5"/>
+      <path d="M50 76c20-27 50-45 84-49" fill="none" stroke="#fff" stroke-linecap="round" stroke-opacity=".45" stroke-width="2"/>
+      <path d="M232 183c-12 27-32 47-58 59" fill="none" stroke="#fff" stroke-linecap="round" stroke-opacity=".72" stroke-width="3"/>
+      <ellipse cx="93" cy="36" fill="#fff" opacity=".48" rx="50" ry="17" filter="url(#innerGlow)"/>
+    </g>
+  </g>
+
+  <ellipse cx="145" cy="170" rx="51" ry="8" fill="#07365f" opacity=".16"/>
+  <ellipse cx="140" cy="183" rx="43" ry="7" fill="#07365f" opacity=".16"/>
+  <path d="M111 168h58c6 0 10 4 10 10v5H101v-5c0-6 4-10 10-10z" fill="url(#base)" stroke="#fff" stroke-width="2"/>
+  <path d="M112 172h56" fill="none" stroke="#a9d8fa" stroke-linecap="round" stroke-opacity=".82" stroke-width="1.7"/>
+  <path d="M117 182h46" fill="none" stroke="#062e54" stroke-linecap="round" stroke-opacity=".48" stroke-width="1.5"/>
+  <g transform="rotate(-32 132 91)" stroke="#fff" stroke-linejoin="round">
+    <path d="M126 85h12v86c0 5-2.5 8-6 8s-6-3-6-8z" fill="url(#gavel)" stroke-width="2"/>
+    <path d="M128 166h8v6c0 2.5-1.5 4-4 4s-4-1.5-4-4z" fill="#a90c28" stroke-width="1.5"/>
+    <path d="M96 60c0-8 6-14 14-14h44c8 0 14 6 14 14v20c0 8-6 14-14 14h-44c-8 0-14-6-14-14z" fill="url(#gavel)" stroke-width="2.5"/>
+    <path d="M103 60c0-5 4-9 9-9h2v42h-2c-5 0-9-4-9-9z" fill="#f2576c" stroke-width="1.3"/>
+    <path d="M155 51h2c5 0 9 4 9 9v24c0 5-4 9-9 9h-2z" fill="#a90c28" stroke-width="1.3"/>
+    <path d="M116 52h31" fill="none" stroke="#fff" stroke-linecap="round" stroke-opacity=".78" stroke-width="2.5"/>
+    <path d="M132 94v13" fill="none" stroke="#8d0923" stroke-linecap="round" stroke-opacity=".56" stroke-width="1.7"/>
+  </g>
+
+  <text x="140" y="210" fill="#083e70" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="800" letter-spacing="-.5" text-anchor="middle">Remate Martínez</text>
+  <path d="M103 217h74" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="1.3"/>
+  <text x="140" y="230" fill="#b10b2b" font-family="Arial, Helvetica, sans-serif" font-size="7.5" font-weight="800" letter-spacing="1.4" text-anchor="middle">REMATE ONLINE</text>
+</svg>

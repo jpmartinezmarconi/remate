@@ -1,50 +1,145 @@
 {% extends "base.html" %}
-{% block title %}Subastas activas · Remate Martínez Online{% endblock %}
+{% block title %}Remates online en Uruguay · Remate Martínez{% endblock %}
 {% block content %}
-<section class="hero-band">
-  <div class="container py-5 py-lg-6">
+<section class="home-hero">
+  <div class="container">
     <div class="row align-items-center g-4">
-      <div class="col-lg-7">
-        <span class="eyebrow">TRADICIÓN QUE SIGUE HACIENDO HISTORIA</span>
-        <h1 class="display-3 fw-bold mt-3 mb-3">Encontrá tu próximo <span class="text-clay">gran hallazgo.</span></h1>
-        <p class="lead text-secondary mb-4">Piezas únicas, oportunidades reales. Participá de nuestros remates online desde cualquier rincón del Uruguay.</p>
-        <a href="#subastas" class="btn btn-clay btn-lg rounded-pill px-4">Explorar subastas <span aria-hidden="true">↓</span></a>
+      <div class="col-lg-7 hero-copy">
+        <span class="hero-label">REMATE ONLINE</span>
+        <h1>Encontrá oportunidades.<br><span>Ofertá desde donde estés.</span></h1>
+        <p>Artículos únicos, ofertas transparentes y la emoción del remate, estés donde estés.</p>
+        <a class="btn btn-auction btn-lg" href="#articulos">¡Hacé tu oferta! <span aria-hidden="true">→</span></a>
       </div>
-      <div class="col-lg-5 d-none d-lg-block"><div class="hero-note"><span class="note-kicker">EL PRÓXIMO REMATE</span><strong>Puede ser tuyo.</strong><span>Ofertá con confianza. Comprá con historia.</span><div class="note-line"></div><small>MONTEVIDEO · URUGUAY</small></div></div>
+      <div class="col-lg-5">
+        <div class="hero-visual">
+          {% if auctions and auctions[0].image_url %}
+            <img class="hero-photo" src="{{ auctions[0].image_url }}" alt="{{ auctions[0].title }}">
+          {% else %}
+            <div class="hero-art-placeholder" aria-hidden="true"><span>RM</span><strong>REMATES<br>ONLINE</strong></div>
+          {% endif %}
+          <div class="hero-visual-caption"><span>OPORTUNIDADES PARA VOS</span><strong>Tu próxima oferta<br>puede ser la mejor.</strong></div>
+        </div>
+      </div>
     </div>
+    <ul class="hero-benefits" aria-label="Ventajas de nuestros remates">
+      <li><span aria-hidden="true">✓</span> 100% online</li>
+      <li><span aria-hidden="true">✓</span> Seguro y transparente</li>
+      <li><span aria-hidden="true">✓</span> Fácil de usar</li>
+    </ul>
   </div>
 </section>
 
-<section class="container py-5" id="subastas">
-  <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-3 mb-4">
-    <div><span class="eyebrow text-clay">OPORTUNIDADES EN CURSO</span><h2 class="section-title mt-2 mb-0">Subastas activas</h2></div>
-    <span class="text-secondary small">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }} disponible{{ '' if auctions|length == 1 else 's' }}</span>
+<section class="trust-strip" aria-label="Cómo participar">
+  <div class="container trust-items">
+    <div><span class="trust-icon" aria-hidden="true">♙</span><p><strong>Registrate</strong><small>y empezá a ofertar</small></p></div>
+    <div><span class="trust-icon" aria-hidden="true">⚒</span><p><strong>Hacé tu oferta</strong><small>en tus lotes favoritos</small></p></div>
+    <div><span class="trust-icon" aria-hidden="true">✓</span><p><strong>Ganás y coordinás</strong><small>el pago y el retiro</small></p></div>
+    <div><span class="trust-icon" aria-hidden="true">▰</span><p><strong>Retirá o recibí</strong><small>coordiná el envío con nosotros</small></p></div>
   </div>
+</section>
 
-  {% if auctions %}
-    <div class="row g-4">
-      {% for auction in auctions %}
-        <div class="col-sm-6 col-xl-4">
-          <article class="card auction-card h-100">
-            <a class="auction-image-wrap" href="{{ url_for('auction.detail', auction_id=auction.id) }}" aria-label="Ver {{ auction.title }}">
-              {% if auction.image_url %}<img src="{{ auction.image_url }}" class="auction-image" alt="{{ auction.title }}" loading="lazy">{% else %}<div class="auction-image placeholder-art"><span>RM</span></div>{% endif %}
-              <span class="live-tag"><span></span> EN REMATE</span>
-            </a>
-            <div class="card-body p-4 d-flex flex-column">
-              <span class="lot-number">LOTE Nº {{ '%04d'|format(auction.id) }}</span>
-              <h3 class="h5 mt-2 mb-2"><a class="stretched-link text-decoration-none text-dark" href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></h3>
-              <p class="text-secondary small auction-summary">{{ auction.description|striptags|truncate(105) }}</p>
-              <div class="mt-auto pt-3 border-top d-flex justify-content-between align-items-end">
-                <div><small class="d-block text-secondary">OFERTA ACTUAL</small><strong class="price">{{ auction.current_price|uyu }}</strong></div>
-                <div class="text-end"><small class="d-block text-secondary">CIERRA</small><span class="closing-date">{{ auction.closes_at.strftime('%d/%m · %H:%M') }} h</span></div>
-              </div>
+<section class="container auction-layout" id="articulos">
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="section-heading">
+        <div><span class="section-kicker">OPORTUNIDADES PARA DESCUBRIR</span><h2>Artículos en remate</h2></div>
+        <span class="auction-count">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }} disponible{{ '' if auctions|length == 1 else 's' }}</span>
+      </div>
+
+      {% if auctions %}
+        <div class="row g-3">
+          {% for auction in auctions %}
+            <div class="col-sm-6 col-xl-4">
+              <article class="card auction-card h-100">
+                <a class="auction-image-wrap" href="{{ url_for('auction.detail', auction_id=auction.id) }}" aria-label="Ver {{ auction.title }}">
+                  {% if auction.image_url %}
+                    <img src="{{ auction.image_url }}" class="auction-image" alt="{{ auction.title }}" loading="lazy">
+                  {% else %}
+                    <div class="auction-image placeholder-art" aria-hidden="true"><span>RM</span></div>
+                  {% endif %}
+                  <span class="live-tag"><span aria-hidden="true"></span> EN REMATE</span>
+                </a>
+                <div class="card-body d-flex flex-column">
+                  <span class="lot-number">LOTE Nº {{ '%04d'|format(auction.id) }}</span>
+                  <h3><a href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></h3>
+                  <p class="auction-summary">{{ auction.description|striptags|truncate(105) }}</p>
+                  <div class="auction-prices mt-auto">
+                    <div><small>PRECIO DE SALIDA</small><span>{{ auction.starting_price|uyu }}</span></div>
+                    <div><small>OFERTA ACTUAL</small><strong>{{ auction.current_price|uyu }}</strong></div>
+                  </div>
+                  <div class="auction-closing"><span aria-hidden="true">◷</span> Cierra {{ auction.closes_at.strftime('%d/%m/%Y · %H:%M') }} h</div>
+                  <a class="btn btn-auction w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}">⚒ <span>Ofertar</span></a>
+                </div>
+              </article>
             </div>
-          </article>
+          {% endfor %}
         </div>
-      {% endfor %}
+      {% else %}
+        <div class="empty-state text-center">
+          <span class="empty-mark" aria-hidden="true">⚒</span>
+          <h3>Pronto habrá nuevos remates</h3>
+          <p>Estamos preparando próximos lotes. Volvé a visitarnos.</p>
+        </div>
+      {% endif %}
     </div>
-  {% else %}
-    <div class="empty-state text-center py-5 px-3"><div class="empty-icon">⌂</div><h3 class="h4 mt-3">Pronto habrá nuevos remates</h3><p class="text-secondary mb-0">Estamos preparando próximos lotes. Volvé a visitarnos.</p></div>
-  {% endif %}
+
+    <aside class="col-lg-4">
+      {% if current_user %}
+        <section class="side-card account-card">
+          <div class="side-card-heading"><span class="account-avatar" aria-hidden="true">♙</span><div><h2>¡Hola, {{ current_user.username }}!</h2><p>Ya podés participar en los remates.</p></div></div>
+          <a class="btn btn-auction w-100" href="#articulos">Explorar artículos</a>
+        </section>
+      {% else %}
+        <section class="side-card account-card">
+          <div class="side-card-heading"><span class="account-avatar" aria-hidden="true">♙</span><div><h2>Registrate para ofertar</h2><p>Creá tu cuenta y participá en nuestros remates.</p></div></div>
+          <a class="btn btn-auction w-100 create-account" href="{{ url_for('auth.register') }}">Crear cuenta</a>
+          <div class="side-login">
+            <h3>¿Ya tenés cuenta?</h3>
+            <form method="post" action="{{ url_for('auth.login') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="mb-2"><label class="visually-hidden" for="home-identity">Usuario o correo</label><input id="home-identity" class="form-control" name="identity" autocomplete="username" placeholder="Usuario o correo" required></div>
+              <div class="mb-3"><label class="visually-hidden" for="home-password">Contraseña</label><input id="home-password" class="form-control" name="password" type="password" autocomplete="current-password" placeholder="Contraseña" required></div>
+              <button class="btn btn-navy w-100" type="submit">Iniciar sesión</button>
+            </form>
+          </div>
+        </section>
+      {% endif %}
+
+      <section class="side-card process-card" id="como-funciona">
+        <h2><span aria-hidden="true">♙</span> ¿Cómo es el proceso?</h2>
+        <ol>
+          <li><span>1</span><p>Registrate con tus datos personales.</p></li>
+          <li><span>2</span><p>Elegí el artículo que te interesa y realizá tu oferta.</p></li>
+          <li><span>3</span><p>Si ganás, coordiná el pago y el retiro o envío.</p></li>
+        </ol>
+      </section>
+
+      <section class="side-card delivery-card">
+        <span class="delivery-icon" aria-hidden="true">▰</span>
+        <div><h2>Retiro y envíos</h2><p>Consultanos para coordinar la entrega de tu artículo.</p></div>
+      </section>
+    </aside>
+  </div>
+</section>
+
+<section class="container bottom-info">
+  <div class="bottom-info-card"><span aria-hidden="true">⌖</span><div><strong>Retiro en nuestro local</strong><small>Av. 8 de Octubre 4336 · Montevideo</small></div></div>
+  <div class="bottom-info-card"><span aria-hidden="true">▰</span><div><strong>Envíos a todo el país</strong><small>Consultá opciones y coordiná la entrega</small></div></div>
+  <div class="bottom-info-card commission-card"><span aria-hidden="true">%</span><div><strong>Remates online</strong><small>Ofertá fácil, estés donde estés</small></div></div>
+</section>
+
+<section class="container telegram-section" aria-labelledby="telegram-title">
+  <div class="telegram-card">
+    <div class="telegram-copy">
+      <span class="telegram-kicker">NOVEDADES Y PRÓXIMOS REMATES</span>
+      <h2 id="telegram-title">Muy pronto, también en Telegram</h2>
+      <p>Estamos preparando un bot para que puedas enterarte de las novedades y los nuevos lotes.</p>
+      <span class="telegram-status"><span aria-hidden="true"></span> Bot en preparación</span>
+    </div>
+    <div class="telegram-qr-wrap">
+      <img class="telegram-qr" src="{{ url_for('static', filename='telegram-qr-demo.svg') }}" alt="Código QR de muestra, no escaneable. El bot de Telegram todavía está en preparación.">
+      <span>QR de muestra · No escaneable</span>
+    </div>
+  </div>
 </section>
 {% endblock %}
