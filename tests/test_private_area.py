@@ -57,6 +57,25 @@ class PrivateAreaTest(unittest.TestCase):
             },
         )
 
+    def test_navigation_links_follow_requested_order(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+        self.assertIn("Funcionamiento del remate", page)
+        self.assertIn("16,67% de comisión", page)
+        self.assertIn("Av. 8 de Octubre 4336/4328", page)
+        labels = (
+            "Inicio",
+            "Ingresar",
+            "Crear cuenta",
+            "Subastas activas",
+            "Artículos en remate",
+            "Cómo funciona",
+            "Contacto",
+            "Área privada",
+        )
+        positions = [page.index(label) for label in labels]
+        self.assertEqual(positions, sorted(positions))
+
     def create_lot(self, lot_number, *, featured=False, photos=None, **overrides):
         data = {
             "csrf_token": self.csrf_token(),

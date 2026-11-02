@@ -27,30 +27,32 @@
           </button>
           <div class="collapse navbar-collapse" id="mainNav">
             <ul class="navbar-nav w-100 align-items-lg-stretch">
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('auction.active_auctions') }}"><span>Subastas activas</span></a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('private_area.login') }}"><span>Área privada</span></a></li>
-              {% if current_user %}
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('account.dashboard') }}"><span>Mi cuenta</span></a></li>
-                <li class="nav-item">
+              <li class="nav-item"><a class="nav-link nav-home" href="{{ url_for('auction.home') }}">⌂ <span>Inicio</span></a></li>
+              <li class="nav-item nav-auth-group">
+                {% if current_user %}
+                  <a class="nav-link" href="{{ url_for('account.dashboard') }}"><span>Mi cuenta</span></a>
+                  <span class="nav-auth-separator" aria-hidden="true">/</span>
                   <form method="post" action="{{ url_for('auth.logout') }}" class="d-flex">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button class="nav-link border-0 bg-transparent" type="submit"><span>Cerrar sesión</span></button>
                   </form>
-                </li>
-              {% else %}
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.login') }}"><span>Ingresar</span></a></li>
-                <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.register') }}"><span>Crear cuenta</span></a></li>
-              {% endif %}
-              <li class="nav-item"><a class="nav-link nav-home" href="{{ url_for('auction.home') }}">⌂ <span>Inicio</span></a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('auction.home') }}#como-funciona">ⓘ <span>Cómo funciona</span></a></li>
+                {% else %}
+                  <a class="nav-link" href="{{ url_for('auth.login') }}"><span>Ingresar</span></a>
+                  <span class="nav-auth-separator" aria-hidden="true">/</span>
+                  <a class="nav-link" href="{{ url_for('auth.register') }}"><span>Crear cuenta</span></a>
+                {% endif %}
+              </li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('auction.active_auctions') }}"><span>Subastas activas</span></a></li>
               <li class="nav-item"><a class="nav-link" href="{{ url_for('auction.home') }}#articulos">▤ <span>Artículos en remate</span></a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('auction.home') }}#como-funciona">ⓘ <span>Cómo funciona</span></a></li>
               <li class="nav-item"><a class="nav-link" href="#contacto">✉ <span>Contacto</span></a></li>
-              <li class="nav-item nav-contact ms-lg-auto">
+              <li class="nav-item nav-contact">
                 <a class="nav-link" href="https://wa.me/59896430909" target="_blank" rel="noopener noreferrer">
                   <span class="whatsapp-icon" aria-hidden="true">◉</span>
                   <span><strong>096 430 909</strong><small>Consultas por WhatsApp</small></span>
                 </a>
               </li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('private_area.login') }}"><span>Área privada</span></a></li>
             </ul>
           </div>
         </div>

@@ -9,7 +9,7 @@
 
 html { scroll-behavior: smooth; }
 body { min-width: 320px; color: #23364d; background: #fff; }
-a { color: var(--rm-blue); }
+a { color: #464feb; text-decoration: none; }
 main { min-height: 55vh; }
 
 .brand-header { background: #fff; }
@@ -27,6 +27,9 @@ main { min-height: 55vh; }
 .rm-navbar .nav-link { display: flex; align-items: center; gap: .65rem; padding: .8rem 1.25rem; color: #fff; font-size: .94rem; font-weight: 600; }
 .rm-navbar .nav-link:hover, .rm-navbar .nav-link:focus { background: #ffffff16; color: #fff; }
 .rm-navbar .nav-home { background: var(--rm-red); }
+.rm-navbar .nav-auth-group { align-items: center; }
+.rm-navbar .nav-auth-group .nav-link { padding-right: .55rem; padding-left: .55rem; }
+.rm-navbar .nav-auth-separator { color: #ffffffa6; }
 .rm-navbar .nav-contact .nav-link { gap: .65rem; }
 .rm-navbar .nav-contact strong, .rm-navbar .nav-contact small { display: block; white-space: nowrap; }
 .rm-navbar .nav-contact strong { font-size: 1rem; }
@@ -119,6 +122,9 @@ main { min-height: 55vh; }
 .process-card li { display: flex; align-items: center; gap: .65rem; }
 .process-card li > span { display: grid; width: 27px; height: 27px; flex: 0 0 27px; place-items: center; border-radius: 50%; color: #fff; background: var(--rm-red); font-weight: 900; }
 .process-card li p { margin: 0; color: #4c6278; font-size: .75rem; line-height: 1.35; }
+.process-auction-details { padding: 0 .8rem .85rem; }
+.process-auction-details h3 { margin: 0 0 .35rem; color: var(--rm-navy); font-size: .8rem; font-weight: 800; }
+.process-auction-details p { margin: 0; color: #4c6278; font-size: .72rem; line-height: 1.5; }
 .delivery-card { display: flex; align-items: center; gap: .8rem; padding: .85rem; background: #f2f7fc; }
 .delivery-icon { color: var(--rm-blue); font-size: 2rem; }
 .delivery-card h2 { margin: 0 0 .2rem; color: var(--rm-navy); font-size: .88rem; font-weight: 800; }
@@ -353,6 +359,10 @@ main { min-height: 55vh; }
 .private-login-card form { margin-top: 1.3rem; }
 .private-auction-table { min-width: 720px; }
 .private-auction-table th { color: var(--rm-navy); font-size: .8rem; }
+.account-auction-table > :not(caption) > * > *,
+.private-auction-table > :not(caption) > * > * { border: 1px solid #e6e6e6; }
+.account-auction-table > thead > tr > th,
+.private-auction-table > thead > tr > th { background-color: #f5f5f5; }
 
 @media (max-width: 575.98px) {
   .private-header { align-items: flex-start; flex-direction: column; }
