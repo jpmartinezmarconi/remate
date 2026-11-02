@@ -32,7 +32,7 @@ El esquema de la aplicación se aplica con `flask --app main db upgrade`. La con
 1. Selecciona el repositorio `jpmartinezmarconi/remate`.
 2. Configura **Root Directory** como `MiProyecto`.
 3. Usa `pip install -r requirements.txt` para compilar y `gunicorn wsgi:app` para iniciar.
-4. Configura `DATABASE_URL` con una URL de PostgreSQL. El comando de inicio aplica las migraciones pendientes antes de iniciar Gunicorn.
+4. Configura `DATABASE_URL` con una URL de PostgreSQL. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes.
 
 No guardes secretos ni valores reales de conexión en el repositorio.
 

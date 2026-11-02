@@ -50,7 +50,7 @@ Los modelos están en `models/`. Las rutas de autenticación están bajo `/auth/
 
 ## Despliegue en Render
 
-El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory: instala las dependencias, aplica las migraciones pendientes al iniciar y comprueba `/api/health`. La aplicación y la interfaz siguen viviendo en la raíz del repositorio. Proporciona `DATABASE_URL` de una base PostgreSQL y define `CORS_ORIGINS` con los orígenes permitidos separados por comas. Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
+El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes y el servicio comprueba `/api/health`. La aplicación y la interfaz siguen viviendo en la raíz del repositorio. Proporciona `DATABASE_URL` de una base PostgreSQL persistente y define `CORS_ORIGINS` con los orígenes permitidos separados por comas. Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
 
 ## Estructura
 
