@@ -14,7 +14,7 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
-      - key: PRIVATE_AREA_PASSWORD
+      - key: PASSWORD_AREA_PRIVADA
         sync: false
   - type: cron
     name: remate-auction-reminders

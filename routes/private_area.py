@@ -41,7 +41,7 @@ def private_area_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not current_app.config.get("PRIVATE_AREA_PASSWORD"):
-            current_app.logger.error("PRIVATE_AREA_PASSWORD is not configured.")
+            current_app.logger.error("PASSWORD_AREA_PRIVADA is not configured.")
             abort(503, description="El área privada no está configurada.")
         if not session.get("private_area_authenticated"):
             return redirect(url_for("private_area.login"))
@@ -127,7 +127,7 @@ def _feature_limit_message(group_name: str, now: datetime) -> str | None:
 def login():
     configured_password = current_app.config.get("PRIVATE_AREA_PASSWORD")
     if not configured_password:
-        current_app.logger.error("PRIVATE_AREA_PASSWORD is not configured.")
+        current_app.logger.error("PASSWORD_AREA_PRIVADA is not configured.")
         abort(503, description="El área privada no está configurada.")
 
     if session.get("private_area_authenticated"):

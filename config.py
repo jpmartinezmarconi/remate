@@ -8,7 +8,9 @@ load_dotenv()
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me")
-    PRIVATE_AREA_PASSWORD = os.getenv("PRIVATE_AREA_PASSWORD")
+    PRIVATE_AREA_PASSWORD = os.getenv("PASSWORD_AREA_PRIVADA") or os.getenv(
+        "PRIVATE_AREA_PASSWORD"
+    )
     SMTP_HOST = os.getenv("SMTP_HOST")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USERNAME = os.getenv("SMTP_USERNAME")
