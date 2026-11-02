@@ -16,6 +16,10 @@ services:
         sync: false
       - key: PASSWORD_AREA_PRIVADA
         sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
   - type: cron
     name: remate-auction-reminders
     runtime: python

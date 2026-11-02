@@ -33,12 +33,16 @@ El panel de usuario `/cuenta` permite actualizar sus datos, revisar las subastas
 
 La portada explica el funcionamiento del remate, incluyendo la comisión del 16,67%, la modalidad por lote o por unidad, y las opciones de envío y retiro. El menú principal presenta Inicio, Ingresar/Crear cuenta (o Mi cuenta), Subastas activas, Artículos en remate, Cómo funciona, Contacto y Área privada, en ese orden. Su barra utiliza cristal translúcido con reflejos neón azules y rojos.
 
+El botón «¿Necesitás ayuda?» abre un asistente de preguntas frecuentes que responde con información del sitio y consulta los lotes publicados en la base de datos. No utiliza servicios de IA externos.
+
+El bot `@rematemartinezbot` comparte esas respuestas mediante el webhook HTTPS `/telegram/webhook`. Configura `TELEGRAM_BOT_TOKEN` (token de BotFather) y `TELEGRAM_WEBHOOK_SECRET` como secretos del servicio web de Render. Tras desplegar y configurar ambas variables, ejecuta `python set_telegram_webhook.py` desde este directorio para registrar el webhook y los comandos `/start` y `/help`. No publiques el token ni lo envíes por chat.
+
 ## Desplegar en Render
 
 1. Selecciona el repositorio `jpmartinezmarconi/remate`.
 2. Configura **Root Directory** como `MiProyecto`.
 3. Usa `pip install -r requirements.txt` para compilar y `gunicorn wsgi:app` para iniciar.
-4. Configura `DATABASE_URL` con una URL de PostgreSQL y `PASSWORD_AREA_PRIVADA` con la clave elegida en el servicio web. Para crear recordatorios, configura las credenciales SMTP y `PUBLIC_BASE_URL` en el Cron Job. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes.
+4. Configura `DATABASE_URL` con una URL de PostgreSQL y `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Para crear recordatorios, configura las credenciales SMTP y `PUBLIC_BASE_URL` en el Cron Job. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes.
 
 No guardes secretos ni valores reales de conexión en el repositorio.
 

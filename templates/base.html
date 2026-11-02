@@ -90,7 +90,32 @@
         </div>
       </div>
     </footer>
+    <button class="help-bot-launcher" id="help-bot-launcher" type="button" aria-controls="help-bot-panel" aria-expanded="false">
+      <span class="help-bot-launcher-icon" aria-hidden="true">?</span>
+      <span>¿Necesitás ayuda?</span>
+    </button>
+    <section class="help-bot-panel" id="help-bot-panel" aria-labelledby="help-bot-title" hidden>
+      <header class="help-bot-header">
+        <div><span class="help-bot-status" aria-hidden="true"></span><div><h2 id="help-bot-title">Asistente Remate Martínez</h2><p>Consultas sobre lotes y remates</p></div></div>
+        <button class="help-bot-close" id="help-bot-close" type="button" aria-label="Cerrar asistente">×</button>
+      </header>
+      <div class="help-bot-messages" id="help-bot-messages" role="log" aria-live="polite" aria-relevant="additions text">
+        <div class="help-bot-message help-bot-message-assistant">¡Hola! Puedo informarte sobre subastas, lotes, comisión, plazos, compras y contacto. ¿Qué necesitás saber?</div>
+      </div>
+      <div class="help-bot-suggestions" aria-label="Preguntas frecuentes">
+        <button type="button" data-help-question="¿Qué subastas están activas?">Subastas activas</button>
+        <button type="button" data-help-question="¿Cuáles son las próximas subastas?">Próximas</button>
+        <button type="button" data-help-question="¿Cómo participar en una subasta?">Cómo participar</button>
+        <button type="button" data-help-question="¿Qué comisión se cobra?">Comisión</button>
+      </div>
+      <form class="help-bot-form" id="help-bot-form" data-endpoint="{{ url_for('help.answer_help_question') }}">
+        <label class="visually-hidden" for="help-bot-input">Escribí tu consulta</label>
+        <input id="help-bot-input" name="message" maxlength="300" autocomplete="off" placeholder="Escribí tu consulta..." required>
+        <button type="submit" aria-label="Enviar consulta">Enviar</button>
+      </form>
+    </section>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='help-bot.js') }}" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

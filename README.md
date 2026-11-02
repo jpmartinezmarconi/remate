@@ -56,13 +56,29 @@ Las cuentas nuevas registran nombre completo, teléfono, dirección de envío, c
 
 `/area-privada` permite crear lotes, asignar número, grupo, precio base, comisión porcentual, modalidad de venta, cantidad, duración, fotos y fecha de inicio. Las fechas se ingresan en hora de Uruguay. Los artículos futuros se publican como “Próximamente”; las cuentas registradas pueden pedir un recordatorio por email 24 horas antes. Si se suscriben dentro de las últimas 24 horas, el aviso se envía en el siguiente ciclo programado. Desde el panel se eligen los lotes destacados de cada grupo. Configura `PASSWORD_AREA_PRIVADA` como variable de entorno local o de Render; no guardes contraseñas en Git. Las fotos se almacenan en la base de datos para persistir con Neon, sin límite de cantidad y con un máximo de 8 MB por archivo. Solo se aceptan JPG, PNG, GIF y WebP.
 
+## Asistente de ayuda
+
+El botón «¿Necesitás ayuda?» abre un asistente en el sitio. Responde preguntas frecuentes sobre cómo participar, plazos, comisión, pagos, dirección y contacto; también consulta las subastas activas y próximas y busca lotes por número. Las respuestas de subastas usan los datos publicados en la base de datos. Es un asistente guiado por temas, no utiliza un servicio de IA externo; si no reconoce una consulta, ofrece los canales de contacto.
+
+## Bot de Telegram
+
+El bot `@rematemartinezbot` usa un webhook HTTPS (`/telegram/webhook`) y el mismo asistente de ayuda del sitio. En Render, configura `TELEGRAM_BOT_TOKEN` con el token de BotFather y `TELEGRAM_WEBHOOK_SECRET` con un valor aleatorio de 1 a 256 letras, números, guiones o guiones bajos. No compartas ni guardes el token en Git. `PUBLIC_BASE_URL` debe apuntar a la URL HTTPS del servicio (Render la expone como `RENDER_EXTERNAL_URL` si no se define).
+
+Después de desplegar y cargar esas variables, ejecuta desde el directorio `MiProyecto` en la consola de Render:
+
+```bash
+python set_telegram_webhook.py
+```
+
+El script registra la URL segura del webhook y los comandos `/start` y `/help`. Para volver a registrar el webhook tras cambiar el dominio o el secreto, ejecuta el comando nuevamente.
+
 ## Despliegue en Render
 
-El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory y un Cron Job que revisa recordatorios cada cinco minutos. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes y el servicio comprueba `/api/health`. Proporciona `DATABASE_URL` de Neon y `PASSWORD_AREA_PRIVADA` como variables del servicio web. Configura `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en el Cron Job. El puerto SMTP predeterminado es 587 (STARTTLS). Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
+El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory y un Cron Job que revisa recordatorios cada cinco minutos. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes y el servicio comprueba `/api/health`. Proporciona `DATABASE_URL` de Neon, `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Configura `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en el Cron Job. El puerto SMTP predeterminado es 587 (STARTTLS). Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
 
 ## Estructura
 
 - `app/`: fábrica Flask, rutas, modelos y extensión de base de datos.
-- `templates/` y `static/`: interfaz web adaptable a móviles y recursos gráficos, incluido el logo de Remate Martínez y un QR de muestra no escaneable para el futuro bot de Telegram.
+- `templates/` y `static/`: interfaz web adaptable a móviles y recursos gráficos, incluido el logo de Remate Martínez y el acceso al bot de Telegram.
 - `config.py`: configuración desde variables de entorno.
 - `main.py`: punto de entrada local y WSGI.
