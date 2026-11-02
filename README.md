@@ -38,21 +38,19 @@ Plataforma web de subastas construida con Flask, SQLAlchemy y PostgreSQL. Incluy
 
 La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. El valor local actual apunta a PostgreSQL; sustituye `host` por el hostname real de tu servidor. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite.
 
-Inicializa las migraciones una sola vez y aplica el esquema:
+El esquema inicial de la aplicación está versionado en `MiProyecto/migrations/`. Aplica las migraciones:
 
 ```bash
-flask --app main db init
-flask --app main db migrate -m "Esquema inicial"
-flask --app main db upgrade
+flask --app main db upgrade --directory MiProyecto/migrations
 ```
 
-Para cambios posteriores, ejecuta `flask --app main db migrate -m "Descripción del cambio"` y `flask --app main db upgrade`. No se crean tablas automáticamente al arrancar.
+Para cambios posteriores, genera una migración con `flask --app main db migrate --directory MiProyecto/migrations -m "Descripción del cambio"` y luego aplica `flask --app main db upgrade --directory MiProyecto/migrations`. No se crean tablas automáticamente al arrancar.
 
 Los modelos están en `models/`. Las rutas de autenticación están bajo `/auth/`; el inicio lista las subastas con fecha de cierre futura y cada detalle permite ofertar tras iniciar sesión.
 
 ## Despliegue en Render
 
-El archivo `render.yaml` configura el servicio web, Gunicorn y la ruta de salud. Al crear el servicio, proporciona `DATABASE_URL` de una base PostgreSQL y define `CORS_ORIGINS` con los orígenes permitidos separados por comas. Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
+El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory: instala las dependencias, aplica las migraciones antes de cada despliegue y comprueba `/api/health`. La aplicación y la interfaz siguen viviendo en la raíz del repositorio. Proporciona `DATABASE_URL` de una base PostgreSQL y define `CORS_ORIGINS` con los orígenes permitidos separados por comas. Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
 
 ## Estructura
 
