@@ -1,0 +1,42 @@
+{% macro render_auction_card(auction, cover_photo_id=None) %}
+<article class="card auction-card h-100">
+  <a class="auction-image-wrap" href="{{ url_for('auction.detail', auction_id=auction.id) }}" aria-label="Ver {{ auction.title }}">
+    {% if cover_photo_id %}
+      <img src="{{ url_for('private_area.photo', photo_id=cover_photo_id) }}" class="auction-image" alt="{{ auction.title }}" loading="lazy">
+    {% elif auction.image_url %}
+      <img src="{{ auction.image_url }}" class="auction-image" alt="{{ auction.title }}" loading="lazy">
+    {% else %}
+      <div class="auction-image placeholder-art" aria-hidden="true"><span>RM</span></div>
+    {% endif %}
+    <span class="live-tag {% if auction.is_upcoming %}upcoming-tag{% endif %}">
+      <span aria-hidden="true"></span>
+      {% if auction.is_upcoming %}PRÓXIMAMENTE{% else %}EN REMATE{% endif %}
+    </span>
+  </a>
+  <div class="card-body d-flex flex-column">
+    <span class="lot-number">LOTE Nº {{ auction.display_lot_number }}</span>
+    <h3><a href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></h3>
+    <p class="auction-summary">{{ auction.description|striptags|truncate(105) }}</p>
+    {% if auction.sale_mode == "units" %}
+      <p class="auction-quantity">{{ auction.quantity }} unidades · puja por unidad</p>
+    {% elif auction.quantity > 1 %}
+      <p class="auction-quantity">Lote completo · {{ auction.quantity }} piezas</p>
+    {% endif %}
+    <div class="auction-prices mt-auto">
+      <div><small>{% if auction.sale_mode == "units" %}PRECIO BASE / UNIDAD{% else %}PRECIO DE SALIDA{% endif %}</small><span>{{ auction.starting_price|uyu }}</span></div>
+      {% if auction.bid_count %}
+        <div><small>{% if auction.sale_mode == "units" %}OFERTA ACTUAL / UNIDAD{% else %}OFERTA ACTUAL{% endif %}</small><strong>{{ auction.current_price|uyu }}</strong></div>
+      {% else %}
+        <div><small>OFERTAS</small><strong>Sin ofertas</strong></div>
+      {% endif %}
+    </div>
+    {% if auction.is_upcoming %}
+      <div class="auction-closing"><span aria-hidden="true">◷</span> Comienza {{ auction.starts_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</div>
+      <a class="btn btn-auction w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}">Ver artículo</a>
+    {% else %}
+      <div class="auction-closing"><span aria-hidden="true">◷</span> Cierra {{ auction.closes_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</div>
+      <a class="btn btn-auction w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}">⚒ <span>Ofertar</span></a>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}

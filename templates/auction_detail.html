@@ -5,19 +5,51 @@
   <a href="{{ url_for('auction.home') }}" class="back-link">← Volver a las subastas</a>
   <div class="row g-5 mt-1">
     <div class="col-lg-7">
-      {% if auction.image_url %}<img class="detail-image" src="{{ auction.image_url }}" alt="{{ auction.title }}">{% else %}<div class="detail-image placeholder-art"><span>RM</span></div>{% endif %}
-      <div class="mt-4"><span class="eyebrow text-clay">LOTE Nº {{ '%04d'|format(auction.id) }}</span><h1 class="display-6 fw-bold mt-2">{{ auction.title }}</h1><p class="text-secondary detail-description">{{ auction.description }}</p></div>
+      {% if auction.photos %}
+        <div class="detail-gallery">
+          {% for photo in auction.photos %}
+            <img class="detail-image" src="{{ url_for('private_area.photo', photo_id=photo.id) }}" alt="{{ auction.title }} · foto {{ loop.index }}" loading="{{ 'eager' if loop.first else 'lazy' }}">
+          {% endfor %}
+        </div>
+      {% elif auction.image_url %}<img class="detail-image" src="{{ auction.image_url }}" alt="{{ auction.title }}">{% else %}<div class="detail-image placeholder-art"><span>RM</span></div>{% endif %}
+      <div class="mt-4"><span class="eyebrow text-clay">LOTE Nº {{ auction.display_lot_number }} · {{ auction.group_name }}</span><h1 class="display-6 fw-bold mt-2">{{ auction.title }}</h1><p class="text-secondary detail-description">{{ auction.description }}</p></div>
     </div>
     <div class="col-lg-5"><aside class="bid-panel">
-      <span class="eyebrow text-clay">{% if auction.is_active %}SUBASTA EN CURSO{% else %}SUBASTA FINALIZADA{% endif %}</span>
-      <p class="text-secondary mt-4 mb-1">Precio inicial <strong class="text-dark">{{ auction.starting_price|uyu }}</strong></p>
-      <small class="text-secondary">OFERTA ACTUAL</small><div class="detail-price">{{ auction.current_price|uyu }}</div>
-      <div class="closing-box mt-3"><span>FECHA DE CIERRE</span><strong>{{ auction.closes_at.strftime('%d/%m/%Y · %H:%M') }} h</strong></div>
+      <span class="eyebrow text-clay">{% if auction.is_upcoming %}PRÓXIMAMENTE{% elif auction.is_active %}SUBASTA EN CURSO{% else %}SUBASTA FINALIZADA{% endif %}</span>
+      {% if auction.is_upcoming %}
+        <div class="closing-box mt-3"><span>COMIENZA (HORA DE URUGUAY)</span><strong>{{ auction.starts_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</strong></div>
+        {% if current_user %}
+          <form method="post" action="{{ url_for('auction.toggle_auction_reminder', auction_id=auction.id) }}" class="mt-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn {% if reminder_subscribed %}btn-outline-primary{% else %}btn-forest{% endif %} btn-lg rounded-pill w-100" type="submit">
+              {% if reminder_subscribed %}Cancelar aviso por correo{% else %}Notificame por mail cuando dé comienzo la subasta{% endif %}
+            </button>
+          </form>
+          <small class="form-text d-block mt-2">Te enviaremos el recordatorio 24 horas antes. Si te suscribís más tarde, el próximo envío lo recibís apenas se procese.</small>
+        {% else %}
+          <a class="btn btn-forest btn-lg rounded-pill w-100 mt-3" href="{{ url_for('auth.login', next=request.path) }}">Ingresá para recibir un aviso por correo</a>
+        {% endif %}
+      {% endif %}
+      {% if auction.sale_mode == "units" %}
+        <div class="alert alert-info mt-3 mb-2">Se subastan {{ auction.quantity }} unidades juntas. La oferta es por unidad y el ganador se adjudica toda la cantidad.</div>
+        <p class="text-secondary mb-1">Precio base por unidad <strong class="text-dark">{{ auction.starting_price|uyu }}</strong></p>
+        <p class="text-secondary mb-1">Total base del conjunto <strong class="text-dark">{{ (auction.starting_price * auction.quantity)|uyu }}</strong></p>
+      {% else %}
+        <div class="alert alert-info mt-3 mb-2">Se subasta el lote completo{% if auction.quantity > 1 %} ({{ auction.quantity }} piezas){% endif %}.</div>
+        <p class="text-secondary mb-1">Precio inicial <strong class="text-dark">{{ auction.starting_price|uyu }}</strong></p>
+      {% endif %}
+      {% if auction.bids %}
+        <small class="text-secondary">OFERTA ACTUAL{% if auction.sale_mode == "units" %} POR UNIDAD{% endif %}</small><div class="detail-price">{{ auction.current_price|uyu }}</div>
+        {% if auction.sale_mode == "units" %}<p class="text-secondary mt-1">total actual: <strong class="text-dark">{{ (auction.current_price * auction.quantity)|uyu }}</strong></p>{% endif %}
+      {% else %}
+        <small class="text-secondary">TODAVÍA NO HAY OFERTAS</small>
+      {% endif %}
+      <div class="closing-box mt-3"><span>FECHA DE CIERRE (HORA DE URUGUAY)</span><strong>{{ auction.closes_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</strong></div>
       {% if auction.is_active %}
         {% if current_user %}
-          <form method="post" action="{{ url_for('auction.place_bid', auction_id=auction.id) }}" class="mt-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="amount" class="form-label">Tu oferta (UYU)</label><div class="input-group input-group-lg"><span class="input-group-text">$U</span><input id="amount" name="amount" type="number" class="form-control" min="0.01" step="0.01" required placeholder="Monto superior a {{ auction.current_price }}"></div><div class="form-text">Debe superar {{ auction.current_price|uyu }}.</div><button class="btn btn-clay btn-lg rounded-pill w-100 mt-3">Hacer una oferta</button></form>
+          <form method="post" action="{{ url_for('auction.place_bid', auction_id=auction.id) }}" class="mt-4"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label for="amount" class="form-label">Tu oferta (UYU{% if auction.sale_mode == "units" %} por unidad{% endif %})</label><div class="input-group input-group-lg"><span class="input-group-text">$U</span><input id="amount" name="amount" type="number" class="form-control" min="0.01" step="0.01" required placeholder="Monto superior a {{ auction.current_price }}"></div><div class="form-text">Debe superar {{ auction.current_price|uyu }}{% if auction.sale_mode == "units" %} por unidad{% endif %}.</div><button class="btn btn-clay btn-lg rounded-pill w-100 mt-3">Hacer una oferta</button></form>
         {% else %}<a class="btn btn-forest btn-lg rounded-pill w-100 mt-4" href="{{ url_for('auth.login', next=request.path) }}">Ingresá para ofertar</a>{% endif %}
-      {% else %}<div class="alert alert-secondary mt-4 mb-0">Este remate ya cerró.</div>{% endif %}
+      {% elif not auction.is_upcoming %}<div class="alert alert-secondary mt-4 mb-0">Este remate ya cerró.</div>{% endif %}
       <div class="seller-note mt-4">Remate Martínez Online · Una tradición uruguaya.</div>
     </aside></div>
   </div>

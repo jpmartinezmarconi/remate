@@ -317,3 +317,47 @@ main { min-height: 55vh; }
 @media (max-width: 575.98px) {
   .rm-navbar .navbar-collapse { margin-right: .25rem; margin-left: .25rem; }
 }
+
+.auction-group-title {
+  margin: 0 0 .8rem;
+  padding: .55rem .8rem;
+  border-left: 4px solid var(--rm-red);
+  color: var(--rm-navy);
+  background: #ffffffa8;
+  font-size: 1.15rem;
+  font-weight: 850;
+}
+.auction-quantity { margin: -.25rem 0 .55rem; color: var(--rm-muted); font-size: .75rem; font-weight: 700; }
+.upcoming-tag { background: #e59408; }
+.featured-caption { display: block; margin-top: .35rem; color: var(--rm-muted); font-size: .75rem; }
+.active-auctions-page { min-height: 48vh; }
+.active-auctions-page .section-heading h1 { margin: .2rem 0 0; font-size: 1.35rem; font-weight: 800; text-transform: uppercase; }
+.detail-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: .75rem; }
+.detail-gallery .detail-image { width: 100%; }
+.private-page { padding-top: 2rem; padding-bottom: 3rem; }
+.private-page .section-kicker { color: var(--rm-blue); }
+.private-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+.private-header h1, .private-login-card h1 { margin: .2rem 0 .35rem; color: var(--rm-navy); font-size: clamp(1.7rem, 3vw, 2.4rem); font-weight: 850; }
+.private-header p, .private-login-card > p { margin: 0; color: var(--rm-muted); }
+.private-panel, .private-login-card {
+  border: 1px solid #ffffffc7;
+  border-radius: 1rem;
+  background: #ffffffc9;
+  box-shadow: 0 12px 32px #164c7814, inset 0 1px #ffffffd9;
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  backdrop-filter: blur(16px) saturate(145%);
+}
+.private-panel { padding: clamp(1rem, 3vw, 1.75rem); }
+.private-panel h2 { color: var(--rm-navy); font-size: 1.35rem; font-weight: 800; }
+.private-login-card { max-width: 480px; margin: 2rem auto; padding: clamp(1.4rem, 4vw, 2.4rem); }
+.private-login-card form { margin-top: 1.3rem; }
+.private-auction-table { min-width: 720px; }
+.private-auction-table th { color: var(--rm-navy); font-size: .8rem; }
+
+@media (max-width: 575.98px) {
+  .private-header { align-items: flex-start; flex-direction: column; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .private-panel, .private-login-card { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

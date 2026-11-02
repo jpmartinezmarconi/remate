@@ -27,7 +27,11 @@ def create_app(config_class=Config):
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
     app.config.setdefault("PERMANENT_SESSION_LIFETIME", timedelta(hours=12))
-    app.config.setdefault("SESSION_COOKIE_SECURE", os.getenv("FLASK_ENV") == "production")
+    app.config.setdefault(
+        "SESSION_COOKIE_SECURE",
+        os.getenv("FLASK_ENV") == "production"
+        or os.getenv("RENDER", "").lower() == "true",
+    )
     origins = app.config.get("CORS_ORIGINS", "http://localhost:3000")
     CORS(app, resources={r"/api/*": {"origins": origins.split(",")}})
 
@@ -37,10 +41,14 @@ def create_app(config_class=Config):
     from .routes import main_bp
     from routes.auction import auction_bp
     from routes.auth import auth_bp
+    from routes.account import account_bp
+    from routes.private_area import private_area_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auction_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(account_bp)
+    app.register_blueprint(private_area_bp)
 
     @app.before_request
     def load_current_user():

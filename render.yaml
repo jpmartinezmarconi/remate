@@ -14,3 +14,28 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - key: PRIVATE_AREA_PASSWORD
+        sync: false
+  - type: cron
+    name: remate-auction-reminders
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python MiProyecto/send_auction_reminders.py"
+    schedule: "*/5 * * * *"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.9
+      - key: DATABASE_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false

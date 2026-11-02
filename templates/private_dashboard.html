@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Gestión de subastas · Área privada{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <div class="private-header">
+    <div><span class="section-kicker">ADMINISTRACIÓN</span><h1>Gestión de subastas</h1><p>Elegí hasta cinco grupos y cinco lotes destacados por grupo para la portada.</p></div>
+    <form method="post" action="{{ url_for('private_area.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-primary" type="submit">Cerrar sesión</button>
+    </form>
+  </div>
+
+  <section class="private-panel">
+    <h2>Crear un lote</h2>
+    <p class="text-secondary">Las fotos se guardan en la base de datos. Podés agregar tantas como necesites; cada archivo admite hasta 8 MB.</p>
+    <form method="post" action="{{ url_for('private_area.create_auction') }}" enctype="multipart/form-data" class="row g-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-8">
+        <label class="form-label" for="title">Artículo</label>
+        <input class="form-control" id="title" name="title" maxlength="160" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="lot-number">Número de lote o artículo</label>
+        <input class="form-control" id="lot-number" name="lot_number" maxlength="40" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" for="group-name">Grupo</label>
+        <input class="form-control" id="group-name" name="group_name" list="auction-groups" maxlength="100" value="General" required>
+        <datalist id="auction-groups">{% for group in groups %}<option value="{{ group }}">{% endfor %}</datalist>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="starting-price">Precio base (UYU)</label>
+        <input class="form-control" id="starting-price" name="starting_price" type="number" min="0.01" max="9999999999.99" step="0.01" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="commission">Comisión (%)</label>
+        <input class="form-control" id="commission" name="commission_percent" type="number" min="0" max="100" step="0.01" value="0" required>
+      </div>
+      <div class="col-12">
+        <fieldset>
+          <legend class="form-label fs-6">¿Cómo se vende?</legend>
+          <div class="btn-group" role="group" aria-label="Modalidad de venta">
+            <input class="btn-check" id="sale-lot" name="sale_mode" type="radio" value="lot" checked>
+            <label class="btn btn-outline-primary" for="sale-lot">Lote completo</label>
+            <input class="btn-check" id="sale-units" name="sale_mode" type="radio" value="units">
+            <label class="btn btn-outline-primary" for="sale-units">Por unidades</label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="col-12">
+        <fieldset>
+          <legend class="form-label fs-6">¿Cuándo comienza la subasta?</legend>
+          <div class="btn-group" role="group" aria-label="Inicio de la subasta">
+            <input class="btn-check" id="start-now" name="start_mode" type="radio" value="now" checked>
+            <label class="btn btn-outline-primary" for="start-now">Comienza ahora</label>
+            <input class="btn-check" id="start-scheduled" name="start_mode" type="radio" value="scheduled">
+            <label class="btn btn-outline-primary" for="start-scheduled">Próximamente</label>
+          </div>
+          <div class="form-text">Las fechas se ingresan en hora de Uruguay. Los artículos próximos se mostrarán con su fecha de inicio.</div>
+        </fieldset>
+      </div>
+      <div class="col-md-6" id="scheduled-start-field" hidden>
+        <label class="form-label" for="starts-at">Fecha y hora de inicio (Uruguay)</label>
+        <input class="form-control" id="starts-at" name="starts_at" type="datetime-local" min="{{ min_start_time }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="quantity">Cantidad de unidades o piezas</label>
+        <input class="form-control" id="quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+        <div class="form-text">En modo unidades, la puja es por unidad y se adjudica toda la cantidad.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="duration">Duración de la subasta (horas)</label>
+        <input class="form-control" id="duration" name="duration_hours" type="number" min="0.01" step="0.25" value="168" required>
+        <div class="form-text">24 horas equivalen a un día.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="photos">Fotos del artículo</label>
+        <input class="form-control" id="photos" name="photos" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
+        <div class="form-text">JPG, PNG, GIF o WebP; sin límite de cantidad.</div>
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="description">Descripción</label>
+        <textarea class="form-control" id="description" name="description" rows="4" required></textarea>
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" id="featured" name="featured_on_home" type="checkbox">
+          <label class="form-check-label" for="featured">Destacar en la página principal (máximo 5 grupos y 5 lotes por grupo)</label>
+        </div>
+      </div>
+      <div class="col-12"><button class="btn btn-auction" type="submit">Publicar subasta</button></div>
+    </form>
+  </section>
+
+  <section class="private-panel mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+      <div><h2 class="mb-1">Lotes cargados</h2><p class="text-secondary mb-0">Los lotes activos aparecen en “Subastas activas”.</p></div>
+      <span class="auction-count">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }}</span>
+    </div>
+    {% if auctions %}
+      <div class="table-responsive">
+        <table class="table align-middle private-auction-table">
+          <thead><tr><th>Lote</th><th>Grupo / artículo</th><th>Comisión</th><th>Estado</th><th>Fotos</th><th>Portada</th></tr></thead>
+          <tbody>
+            {% for auction in auctions %}
+              <tr>
+                <td><strong>{{ auction.display_lot_number }}</strong></td>
+                <td><strong>{{ auction.title }}</strong><small class="d-block text-secondary">{{ auction.group_name }} · {{ auction.starting_price|uyu }}{% if auction.sale_mode == "units" %} por unidad{% endif %}</small></td>
+                <td>{{ auction.commission_percent }}%</td>
+                <td>{% if auction.is_upcoming %}<span class="badge text-bg-warning">Próximamente</span>{% elif auction.is_active %}<span class="badge text-bg-success">Activa</span>{% else %}<span class="badge text-bg-secondary">Finalizada</span>{% endif %}</td>
+                <td>{{ photo_counts.get(auction.id, 0) }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('private_area.update_home_feature', auction_id=auction.id) }}" class="d-flex align-items-center gap-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input class="form-check-input mt-0" type="checkbox" name="featured_on_home" id="featured-{{ auction.id }}" {% if auction.featured_on_home %}checked{% endif %} {% if not auction.is_active and not auction.is_upcoming %}disabled{% endif %}>
+                    <label class="visually-hidden" for="featured-{{ auction.id }}">Destacar {{ auction.title }}</label>
+                    <button class="btn btn-sm btn-outline-primary" type="submit">Guardar</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Todavía no hay lotes cargados.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  const startNow = document.getElementById("start-now");
+  const startScheduled = document.getElementById("start-scheduled");
+  const scheduledStartField = document.getElementById("scheduled-start-field");
+  const startsAt = document.getElementById("starts-at");
+  const updateScheduledStart = () => {
+    const scheduled = startScheduled.checked;
+    scheduledStartField.hidden = !scheduled;
+    startsAt.required = scheduled;
+  };
+  startNow.addEventListener("change", updateScheduledStart);
+  startScheduled.addEventListener("change", updateScheduledStart);
+  updateScheduledStart();
+</script>
+{% endblock %}

@@ -12,7 +12,9 @@
       </div>
       <div class="col-lg-5">
         <div class="hero-visual">
-          {% if auctions and auctions[0].image_url %}
+          {% if auctions and cover_photos.get(auctions[0].id) %}
+            <img class="hero-photo" src="{{ url_for('private_area.photo', photo_id=cover_photos.get(auctions[0].id)) }}" alt="{{ auctions[0].title }}">
+          {% elif auctions and auctions[0].image_url %}
             <img class="hero-photo" src="{{ auctions[0].image_url }}" alt="{{ auctions[0].title }}">
           {% else %}
             <div class="hero-art-placeholder" aria-hidden="true"><span>RM</span><strong>REMATES<br>ONLINE</strong></div>
@@ -47,38 +49,23 @@
       </div>
 
       {% if auctions %}
-        <div class="row g-3">
-          {% for auction in auctions %}
-            <div class="col-sm-6 col-xl-4">
-              <article class="card auction-card h-100">
-                <a class="auction-image-wrap" href="{{ url_for('auction.detail', auction_id=auction.id) }}" aria-label="Ver {{ auction.title }}">
-                  {% if auction.image_url %}
-                    <img src="{{ auction.image_url }}" class="auction-image" alt="{{ auction.title }}" loading="lazy">
-                  {% else %}
-                    <div class="auction-image placeholder-art" aria-hidden="true"><span>RM</span></div>
-                  {% endif %}
-                  <span class="live-tag"><span aria-hidden="true"></span> EN REMATE</span>
-                </a>
-                <div class="card-body d-flex flex-column">
-                  <span class="lot-number">LOTE Nº {{ '%04d'|format(auction.id) }}</span>
-                  <h3><a href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></h3>
-                  <p class="auction-summary">{{ auction.description|striptags|truncate(105) }}</p>
-                  <div class="auction-prices mt-auto">
-                    <div><small>PRECIO DE SALIDA</small><span>{{ auction.starting_price|uyu }}</span></div>
-                    <div><small>OFERTA ACTUAL</small><strong>{{ auction.current_price|uyu }}</strong></div>
-                  </div>
-                  <div class="auction-closing"><span aria-hidden="true">◷</span> Cierra {{ auction.closes_at.strftime('%d/%m/%Y · %H:%M') }} h</div>
-                  <a class="btn btn-auction w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}">⚒ <span>Ofertar</span></a>
-                </div>
-              </article>
+        {% from "_auction_card.html" import render_auction_card %}
+        {% for group_name, group_auctions in auctions|groupby('group_name') %}
+          <section class="auction-group mb-4" aria-label="Grupo {{ group_name }}">
+            <h3 class="auction-group-title">{{ group_name }}</h3>
+            <div class="row g-3">
+              {% for auction in group_auctions %}
+                <div class="col-sm-6 col-xl-4">{{ render_auction_card(auction, cover_photos.get(auction.id)) }}</div>
+              {% endfor %}
             </div>
-          {% endfor %}
-        </div>
+          </section>
+        {% endfor %}
       {% else %}
         <div class="empty-state text-center">
           <span class="empty-mark" aria-hidden="true">⚒</span>
-          <h3>Pronto habrá nuevos remates</h3>
-          <p>Estamos preparando próximos lotes. Volvé a visitarnos.</p>
+          <h3>Pronto habrá lotes destacados</h3>
+          <p>Visitá las subastas activas para ver todos los artículos disponibles.</p>
+          <a class="btn btn-auction" href="{{ url_for('auction.active_auctions') }}">Ver subastas activas</a>
         </div>
       {% endif %}
     </div>

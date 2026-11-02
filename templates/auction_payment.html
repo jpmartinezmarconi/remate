@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Pago del lote {{ auction.display_lot_number }} · Remate Martínez{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <a class="back-link" href="{{ url_for('account.dashboard') }}">← Volver a mi cuenta</a>
+  <div class="payment-card mt-3">
+    <span class="section-kicker">LOTE GANADO · Nº {{ auction.display_lot_number }}</span>
+    <h1>{{ auction.title }}</h1>
+    <p class="text-secondary">Seleccioná cómo preferís pagar. Por ahora registraremos tu elección y Remate Martínez confirmará el pago; esta página no procesa cargos ni solicita datos de tarjeta.</p>
+    {% set hammer_total = auction.current_price * (auction.quantity if auction.sale_mode == 'units' else 1) %}
+    {% set commission_total = (hammer_total * auction.commission_percent / 100)|round(2) %}
+    <dl class="payment-breakdown">
+      <div><dt>Importe de la oferta{% if auction.sale_mode == "units" %} × {{ auction.quantity }} unidades{% endif %}</dt><dd>{{ hammer_total|uyu }}</dd></div>
+      <div><dt>Comisión ({{ auction.commission_percent }}%)</dt><dd>{{ commission_total|uyu }}</dd></div>
+      <div class="payment-total"><dt>Total pendiente</dt><dd>{{ total|uyu }}</dd></div>
+    </dl>
+
+    {% if payment and payment.status == "pending" %}
+      <div class="alert alert-info">Tenés registrado “{{ payment_methods[payment.method] }}” como método de pago. Si todavía no realizaste el pago, podés seleccionar otro método.</div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <fieldset>
+        <legend class="form-label">Método de pago</legend>
+        {% for method, label in payment_methods.items() %}
+          <label class="payment-method">
+            <input class="form-check-input" type="radio" name="method" value="{{ method }}" {% if payment and payment.method == method %}checked{% endif %} required>
+            <span><strong>{{ label }}</strong>
+              {% if method == "card" %}<small>Crédito o débito. No ingreses datos de tarjeta en este sitio.</small>
+              {% elif method == "bank_transfer" %}<small>La transferencia quedará pendiente hasta confirmar su recepción.</small>
+              {% else %}<small>La elección queda registrada; el pago todavía no se procesa en MercadoPago.</small>{% endif %}
+            </span>
+          </label>
+        {% endfor %}
+      </fieldset>
+      {% if bank_transfer_instructions %}
+        <div class="alert alert-secondary mt-3"><strong>Datos para transferencia:</strong><br>{{ bank_transfer_instructions|e|replace('\n', '<br>')|safe }}</div>
+      {% endif %}
+      <button class="btn btn-auction btn-lg w-100 mt-3" type="submit">Registrar método de pago</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Mi cuenta · Remate Martínez{% endblock %}
+{% block content %}
+<section class="container private-page account-page">
+  <div class="private-header">
+    <div><span class="section-kicker">TU CUENTA</span><h1>Hola, {{ user.full_name or user.username }}</h1><p>Administrá tus datos, tus subastas y los pagos pendientes.</p></div>
+  </div>
+
+  {% if not user.profile_complete %}
+    <div class="alert alert-warning">Completá todos tus datos para poder ofertar y pagar lotes.</div>
+  {% endif %}
+
+  <section class="private-panel mb-4">
+    <h2>Mis datos</h2>
+    <form method="post" action="{{ url_for('account.update_profile') }}" class="row g-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-6"><label class="form-label" for="account-full-name">Nombre completo</label><input class="form-control" id="account-full-name" name="full_name" value="{{ user.full_name }}" maxlength="160" autocomplete="name" required></div>
+      <div class="col-md-6"><label class="form-label" for="account-email">Correo electrónico</label><input class="form-control" id="account-email" name="email" type="email" value="{{ user.email }}" maxlength="255" autocomplete="email" required></div>
+      <div class="col-md-6"><label class="form-label" for="account-phone">Teléfono</label><input class="form-control" id="account-phone" name="phone" type="tel" value="{{ user.phone }}" maxlength="40" autocomplete="tel" required></div>
+      <div class="col-md-6"><label class="form-label" for="account-address">Dirección de envío</label><input class="form-control" id="account-address" name="shipping_address" value="{{ user.shipping_address }}" maxlength="255" autocomplete="street-address" required></div>
+      <div class="col-md-8"><label class="form-label" for="account-city">Ciudad</label><input class="form-control" id="account-city" name="city" value="{{ user.city }}" maxlength="100" autocomplete="address-level2" required></div>
+      <div class="col-md-4"><label class="form-label" for="account-postal-code">Código postal</label><input class="form-control" id="account-postal-code" name="postal_code" value="{{ user.postal_code }}" maxlength="20" autocomplete="postal-code" required></div>
+      <div class="col-12"><button class="btn btn-auction" type="submit">Guardar mis datos</button></div>
+    </form>
+  </section>
+
+  <section class="private-panel mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+      <div><h2 class="mb-1">Subastas que gané</h2><p class="text-secondary mb-0">Las subastas ganadas aparecen luego de la fecha de cierre.</p></div>
+      <span class="auction-count">{{ won_auctions|length }} lote{{ '' if won_auctions|length == 1 else 's' }}</span>
+    </div>
+    {% if won_auctions %}
+      <div class="table-responsive">
+        <table class="table align-middle account-auction-table">
+          <thead><tr><th>Lote</th><th>Artículo</th><th>Oferta ganadora</th><th>Total con comisión</th><th>Pago</th></tr></thead>
+          <tbody>
+            {% for auction in won_auctions %}
+              {% set payment = payments.get(auction.id) %}
+              <tr>
+                <td>{{ auction.display_lot_number }}</td>
+                <td><a href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></td>
+                <td>{{ auction.current_price|uyu }}{% if auction.sale_mode == "units" %} / unidad × {{ auction.quantity }}{% endif %}</td>
+                <td><strong>{{ payment_totals[auction.id]|uyu }}</strong></td>
+                <td>
+                  {% if payment and payment.status == "pending" %}
+                    <span class="badge text-bg-warning">Pendiente</span>
+                    <a class="btn btn-sm btn-outline-primary ms-1" href="{{ url_for('account.pay_for_auction', auction_id=auction.id) }}">Cambiar método</a>
+                  {% else %}
+                    <a class="btn btn-sm btn-auction" href="{{ url_for('account.pay_for_auction', auction_id=auction.id) }}">Elegir cómo pagar</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Todavía no ganaste una subasta cerrada.</p>
+    {% endif %}
+  </section>
+
+  <section class="private-panel">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+      <div><h2 class="mb-1">Subastas en las que participé</h2><p class="text-secondary mb-0">Incluye lotes activos, próximos y finalizados.</p></div>
+      <span class="auction-count">{{ participated|length }} lote{{ '' if participated|length == 1 else 's' }}</span>
+    </div>
+    {% if participated %}
+      <div class="table-responsive">
+        <table class="table align-middle account-auction-table">
+          <thead><tr><th>Lote</th><th>Artículo</th><th>Mi última puja</th><th>Estado de subasta</th></tr></thead>
+          <tbody>
+            {% for auction in participated %}
+              <tr>
+                <td>{{ auction.display_lot_number }}</td>
+                <td><a href="{{ url_for('auction.detail', auction_id=auction.id) }}">{{ auction.title }}</a></td>
+                <td>{% set my_bid = auction.bids|selectattr('user_id', 'equalto', user.id)|sort(attribute='created_at', reverse=true)|first %}{{ my_bid.amount|uyu }}{% if auction.sale_mode == "units" %} / unidad{% endif %}</td>
+                <td>
+                  {% if auction.is_upcoming %}<span class="badge text-bg-warning">Próximamente</span>
+                  {% elif auction.is_active %}<span class="badge text-bg-success">Activa</span>
+                  {% elif auction.id in won_auctions|map(attribute='id')|list %}<span class="badge text-bg-primary">Ganada</span>
+                  {% else %}<span class="badge text-bg-secondary">Finalizada</span>{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Todavía no participaste en ninguna subasta.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}
