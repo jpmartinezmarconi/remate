@@ -8,10 +8,18 @@
       {% if auction.photos %}
         <div class="detail-gallery">
           {% for photo in auction.photos %}
-            <img class="detail-image" src="{{ url_for('private_area.photo', photo_id=photo.id) }}" alt="{{ auction.title }} · foto {{ loop.index }}" loading="{{ 'eager' if loop.first else 'lazy' }}">
+            <button class="detail-image-trigger" type="button" data-lightbox-image="{{ url_for('private_area.photo', photo_id=photo.id) }}" data-lightbox-alt="{{ auction.title }} · foto {{ loop.index }}" aria-label="Ampliar foto {{ loop.index }}: {{ auction.title }}">
+              <img class="detail-image" src="{{ url_for('private_area.photo', photo_id=photo.id) }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}">
+              <span class="detail-image-hint" aria-hidden="true">⌕ Ampliar</span>
+            </button>
           {% endfor %}
         </div>
-      {% elif auction.image_url %}<img class="detail-image" src="{{ auction.image_url }}" alt="{{ auction.title }}">{% else %}<div class="detail-image placeholder-art"><span>RM</span></div>{% endif %}
+      {% elif auction.image_url %}
+        <button class="detail-image-trigger detail-image-single" type="button" data-lightbox-image="{{ auction.image_url }}" data-lightbox-alt="{{ auction.title }}" aria-label="Ampliar foto: {{ auction.title }}">
+          <img class="detail-image" src="{{ auction.image_url }}" alt="{{ auction.title }}">
+          <span class="detail-image-hint" aria-hidden="true">⌕ Ampliar</span>
+        </button>
+      {% else %}<div class="detail-image placeholder-art"><span>RM</span></div>{% endif %}
       <div class="mt-4"><span class="eyebrow text-clay">LOTE Nº {{ auction.display_lot_number }} · {{ auction.group_name }}</span><h1 class="display-6 fw-bold mt-2">{{ auction.title }}</h1><p class="text-secondary detail-description">{{ auction.description }}</p></div>
     </div>
     <div class="col-lg-5"><aside class="bid-panel">
@@ -87,4 +95,19 @@
     </section>
   {% endif %}
 </section>
+{% if auction.photos or auction.image_url %}
+  <dialog class="photo-lightbox" data-photo-lightbox aria-label="Vista ampliada de las fotos del lote">
+    <button class="photo-lightbox-close" type="button" data-lightbox-close aria-label="Cerrar foto ampliada">×</button>
+    <button class="photo-lightbox-nav photo-lightbox-prev" type="button" data-lightbox-previous aria-label="Ver foto anterior">‹</button>
+    <img class="photo-lightbox-image" data-lightbox-preview alt="">
+    <button class="photo-lightbox-nav photo-lightbox-next" type="button" data-lightbox-next aria-label="Ver foto siguiente">›</button>
+    <p class="photo-lightbox-count" data-lightbox-count aria-live="polite"></p>
+  </dialog>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  {% if auction.photos or auction.image_url %}
+    <script src="{{ url_for('static', filename='photo-lightbox.js') }}" defer></script>
+  {% endif %}
 {% endblock %}
