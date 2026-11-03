@@ -304,6 +304,175 @@ def create_auction():
     return redirect(url_for("private_area.dashboard"))
 
 
+@private_area_bp.route("/lotes/<int:auction_id>/editar", methods=["GET", "POST"])
+@private_area_required
+@csrf_protect
+def edit_auction(auction_id: int):
+    auction = db.get_or_404(Auction, auction_id)
+    has_history = bool(_lots_with_history([auction.id]))
+    groups = AuctionGroup.query.order_by(AuctionGroup.name.asc()).all()
+
+    if request.method == "GET":
+        return render_template(
+            "private_auction_edit.html",
+            auction=auction,
+            groups=groups,
+            has_history=has_history,
+        )
+
+    title = request.form.get("title", "").strip()
+    description = request.form.get("description", "").strip()
+    if not title or len(title) > 160 or not description:
+        flash("El título y la descripción son obligatorios.", "danger")
+        return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+    if has_history:
+        group = auction.sales_group
+        lot_number = auction.lot_number
+        starting_price = auction.starting_price
+        commission_percent = auction.commission_percent
+        quantity = auction.quantity
+        sale_mode = auction.sale_mode
+        starts_at = auction.starts_at
+        closes_at = auction.closes_at
+    else:
+        lot_number = request.form.get("lot_number", "").strip()
+        group_id = request.form.get("group_id", "").strip()
+        sale_mode = request.form.get("sale_mode", "")
+        try:
+            starting_price = Decimal(
+                request.form.get("starting_price", "").replace(",", ".")
+            )
+            commission_percent = Decimal(
+                request.form.get("commission_percent", "").replace(",", ".")
+            )
+            quantity = int(request.form.get("quantity", ""))
+        except (InvalidOperation, ValueError):
+            flash("Revisá los valores de precio, comisión y cantidad.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        group = db.session.get(AuctionGroup, group_id) if group_id.isdigit() else None
+        if not lot_number or len(lot_number) > 40:
+            flash("Ingresá un número de lote de hasta 40 caracteres.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if group is None:
+            flash("Seleccioná un grupo de ventas válido.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if sale_mode not in {"lot", "units"}:
+            flash("Seleccioná si se vende como lote o por unidades.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if (
+            not starting_price.is_finite()
+            or starting_price <= 0
+            or starting_price > MAX_PRICE
+        ):
+            flash("El precio base debe ser mayor que cero y no superar $U 9.999.999.999,99.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if (
+            not commission_percent.is_finite()
+            or commission_percent < 0
+            or commission_percent > 100
+        ):
+            flash("La comisión debe estar entre 0% y 100%.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if quantity < 1 or quantity > 2147483647:
+            flash("La cantidad debe ser un número entero positivo válido.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        duplicate_lot = Auction.query.filter(
+            Auction.group_id == group.id,
+            Auction.lot_number == lot_number,
+            Auction.id != auction.id,
+        ).first()
+        if duplicate_lot:
+            flash("Ese número de lote ya existe dentro del grupo seleccionado.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        original_start_value = auction.starts_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+        original_close_value = auction.closes_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+        submitted_start = request.form.get("starts_at", "")
+        submitted_close = request.form.get("closes_at", "")
+        try:
+            starts_at = auction.starts_at
+            if submitted_start != original_start_value:
+                local_start = datetime.strptime(
+                    submitted_start, "%Y-%m-%dT%H:%M"
+                ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+                starts_at = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+            closes_at = auction.closes_at
+            if submitted_close != original_close_value:
+                local_close = datetime.strptime(
+                    submitted_close, "%Y-%m-%dT%H:%M"
+                ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+                closes_at = local_close.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError:
+            flash("Ingresá fechas y horas de inicio y cierre válidas.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        duration = closes_at.replace(tzinfo=None) - starts_at.replace(tzinfo=None)
+        if duration < timedelta(hours=1) or duration > timedelta(hours=168):
+            flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+    is_finished = auction.closes_at.replace(tzinfo=None) <= datetime.now(timezone.utc).replace(
+        tzinfo=None
+    )
+    featured_on_home = (
+        auction.featured_on_home
+        if is_finished
+        else request.form.get("featured_on_home") == "on"
+    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if featured_on_home and closes_at.replace(tzinfo=None) <= now:
+        flash("No se puede destacar una subasta finalizada.", "danger")
+        return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+    if featured_on_home and (
+        not auction.featured_on_home or group.id != auction.group_id
+    ):
+        feature_limit_message = _feature_limit_message(group.name, now)
+        if feature_limit_message:
+            flash(feature_limit_message, "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+    try:
+        removed_photo_ids = list(
+            dict.fromkeys(int(value) for value in request.form.getlist("remove_photo_ids"))
+        )
+    except ValueError:
+        flash("La selección de fotos no es válida.", "danger")
+        return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+    photos_by_id = {photo.id: photo for photo in auction.photos}
+    if any(photo_id not in photos_by_id for photo_id in removed_photo_ids):
+        flash("La selección contiene fotos que no pertenecen a este lote.", "danger")
+        return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+    photos = _uploaded_photos()
+    if photos is None:
+        return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+    auction.title = title
+    auction.description = description
+    auction.featured_on_home = featured_on_home
+    if not has_history:
+        auction.lot_number = lot_number
+        auction.group_id = group.id
+        auction.group_name = group.name
+        auction.starting_price = starting_price.quantize(Decimal("0.01"))
+        auction.current_price = auction.starting_price
+        auction.commission_percent = commission_percent.quantize(Decimal("0.01"))
+        auction.quantity = quantity
+        auction.sale_mode = sale_mode
+        if submitted_start != original_start_value:
+            auction.starts_at = starts_at
+        if submitted_close != original_close_value:
+            auction.closes_at = closes_at
+    for photo_id in removed_photo_ids:
+        db.session.delete(photos_by_id[photo_id])
+    auction.photos.extend(photos)
+    db.session.commit()
+    flash(f"El lote {auction.display_lot_number} se actualizó correctamente.", "success")
+    return redirect(url_for("private_area.dashboard"))
+
+
 @private_area_bp.post("/grupos")
 @private_area_required
 @csrf_protect

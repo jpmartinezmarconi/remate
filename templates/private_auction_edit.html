@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Editar lote {{ auction.display_lot_number }} · Área privada{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <div class="private-header">
+    <div>
+      <span class="section-kicker">ADMINISTRACIÓN</span>
+      <h1>Editar lote {{ auction.display_lot_number }}</h1>
+      <p>Actualizá los datos del artículo y guardá los cambios.</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.dashboard') }}">Volver al panel</a>
+  </div>
+
+  <section class="private-panel">
+    {% if has_history %}
+      <div class="alert alert-info" role="status">
+        Este lote tiene pujas o pagos registrados. Para proteger el historial, el grupo,
+        número de lote, precio, comisión, modalidad, cantidad y fechas no se pueden modificar.
+      </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('private_area.edit_auction', auction_id=auction.id) }}" enctype="multipart/form-data" class="row g-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="col-md-8">
+        <label class="form-label" for="title">Artículo</label>
+        <input class="form-control" id="title" name="title" maxlength="160" value="{{ auction.title }}" required>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="lot-number">Número de lote o artículo</label>
+        {% if has_history %}
+          <input class="form-control" id="lot-number" value="{{ auction.display_lot_number }}" disabled>
+        {% else %}
+          <input class="form-control" id="lot-number" name="lot_number" maxlength="40" value="{{ auction.display_lot_number }}" required>
+        {% endif %}
+      </div>
+      {% if has_history %}
+        <div class="col-md-6">
+          <label class="form-label" for="auction-group">Grupo de ventas</label>
+          <input class="form-control" id="auction-group" value="{{ auction.group_name }}" disabled>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="starting-price">Precio base (UYU)</label>
+          <input class="form-control" id="starting-price" value="{{ auction.starting_price }}" disabled>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="commission">Comisión (%)</label>
+          <input class="form-control" id="commission" value="{{ auction.commission_percent }}" disabled>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="sale-mode">Modalidad de venta</label>
+          <input class="form-control" id="sale-mode" value="{{ 'Por unidades' if auction.sale_mode == 'units' else 'Lote completo' }}" disabled>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="quantity">Cantidad</label>
+          <input class="form-control" id="quantity" value="{{ auction.quantity }}" disabled>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Inicio y cierre</label>
+          <p class="form-control-plaintext">{{ auction.starts_at_montevideo.strftime("%d/%m/%Y %H:%M") }} – {{ auction.closes_at_montevideo.strftime("%d/%m/%Y %H:%M") }}</p>
+        </div>
+      {% else %}
+        <div class="col-md-6">
+          <label class="form-label" for="auction-group">Grupo de ventas</label>
+          <select class="form-select" id="auction-group" name="group_id" required>
+            {% for group in groups %}
+              <option value="{{ group.id }}" {% if group.id == auction.group_id %}selected{% endif %}>{{ group.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="starting-price">Precio base (UYU)</label>
+          <input class="form-control" id="starting-price" name="starting_price" type="number" min="0.01" max="9999999999.99" step="0.01" value="{{ auction.starting_price }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="commission">Comisión (%)</label>
+          <input class="form-control" id="commission" name="commission_percent" type="number" min="0" max="100" step="0.01" value="{{ auction.commission_percent }}" required>
+        </div>
+        <div class="col-md-6">
+          <fieldset>
+            <legend class="form-label fs-6">¿Cómo se vende?</legend>
+            <div class="btn-group" role="group" aria-label="Modalidad de venta">
+              <input class="btn-check" id="sale-lot" name="sale_mode" type="radio" value="lot" {% if auction.sale_mode == "lot" %}checked{% endif %}>
+              <label class="btn btn-outline-primary" for="sale-lot">Lote completo</label>
+              <input class="btn-check" id="sale-units" name="sale_mode" type="radio" value="units" {% if auction.sale_mode == "units" %}checked{% endif %}>
+              <label class="btn btn-outline-primary" for="sale-units">Por unidades</label>
+            </div>
+          </fieldset>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="quantity">Cantidad de unidades o piezas</label>
+          <input class="form-control" id="quantity" name="quantity" type="number" min="1" step="1" value="{{ auction.quantity }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="starts-at">Fecha y hora de inicio (Uruguay)</label>
+          <input class="form-control" id="starts-at" name="starts_at" type="datetime-local" value="{{ auction.starts_at_montevideo.strftime('%Y-%m-%dT%H:%M') }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="closes-at">Fecha y hora de cierre (Uruguay)</label>
+          <input class="form-control" id="closes-at" name="closes_at" type="datetime-local" value="{{ auction.closes_at_montevideo.strftime('%Y-%m-%dT%H:%M') }}" required>
+          <div class="form-text">La duración debe quedar entre 1 y 168 horas. Si no cambiás estas fechas, el tiempo restante de la cuenta regresiva se conserva exactamente.</div>
+        </div>
+      {% endif %}
+      <div class="col-12">
+        <label class="form-label" for="description">Descripción</label>
+        <textarea class="form-control" id="description" name="description" rows="4" required>{{ auction.description }}</textarea>
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="photos">Agregar fotos</label>
+        <input class="form-control" id="photos" name="photos" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
+        <div class="form-text">JPG, PNG, GIF o WebP; hasta 8 MB por archivo.</div>
+      </div>
+      {% if auction.photos %}
+        <div class="col-12">
+          <fieldset>
+            <legend class="form-label fs-6">Fotos actuales</legend>
+            <div class="row g-3">
+              {% for photo in auction.photos %}
+                <div class="col-6 col-md-3">
+                  <img class="img-fluid rounded mb-2" src="{{ url_for('private_area.photo', photo_id=photo.id) }}" alt="Foto del lote {{ auction.display_lot_number }}">
+                  <div class="form-check">
+                    <input class="form-check-input" id="remove-photo-{{ photo.id }}" name="remove_photo_ids" type="checkbox" value="{{ photo.id }}">
+                    <label class="form-check-label" for="remove-photo-{{ photo.id }}">Quitar esta foto</label>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </fieldset>
+        </div>
+      {% endif %}
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" id="featured" name="featured_on_home" type="checkbox" {% if auction.featured_on_home %}checked{% endif %} {% if not auction.is_active and not auction.is_upcoming %}disabled{% endif %}>
+          <label class="form-check-label" for="featured">Destacar en la página principal (máximo 5 grupos y 5 lotes por grupo)</label>
+        </div>
+      </div>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-auction" type="submit">Guardar cambios</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('private_area.dashboard') }}">Cancelar</a>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

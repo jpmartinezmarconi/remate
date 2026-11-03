@@ -151,11 +151,14 @@
                         </form>
                       </td>
                       <td>
-                        <form method="post" action="{{ url_for('private_area.delete_group_auctions', group_id=group.id) }}" onsubmit="return confirm('¿Eliminar este lote?');">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <input type="hidden" name="auction_ids" value="{{ auction.id }}">
-                          <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
-                        </form>
+                        <div class="d-flex flex-wrap gap-2">
+                          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('private_area.edit_auction', auction_id=auction.id) }}">Editar</a>
+                          <form method="post" action="{{ url_for('private_area.delete_group_auctions', group_id=group.id) }}" onsubmit="return confirm('¿Eliminar este lote?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="auction_ids" value="{{ auction.id }}">
+                            <button class="btn btn-sm btn-outline-danger" type="submit">Eliminar</button>
+                          </form>
+                        </div>
                       </td>
                     </tr>
                   {% endfor %}

@@ -271,6 +271,165 @@ class PrivateAreaTest(unittest.TestCase):
             auction = Auction.query.one()
             self.assertEqual(auction.commission_percent, Decimal("20.00"))
 
+    def test_edits_an_existing_lot_and_saves_its_fields_and_photos(self):
+        self.login()
+        self.create_lot(
+            "EDIT-01",
+            photos=[(BytesIO(b"\x89PNG\r\n\x1a\nold"), "old.png")],
+        )
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction.starts_at = auction.starts_at.replace(second=37, microsecond=123456)
+            auction.closes_at = auction.closes_at.replace(second=37, microsecond=123456)
+            db.session.commit()
+            auction = db.session.get(Auction, auction.id)
+            auction_id = auction.id
+            group_id = auction.group_id
+            old_photo_id = auction.photos[0].id
+            original_starts_at = auction.starts_at
+            original_closes_at = auction.closes_at
+            starts_at = auction.starts_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+            closes_at = auction.closes_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+
+        edit_url = f"/area-privada/lotes/{auction_id}/editar"
+        edit_page = self.client.get(edit_url)
+        self.assertEqual(edit_page.status_code, 200)
+        self.assertIn(b"Guardar cambios", edit_page.data)
+        dashboard = self.client.get("/area-privada/panel")
+        self.assertIn(edit_url.encode(), dashboard.data)
+
+        response = self.client.post(
+            edit_url,
+            data={
+                "csrf_token": self.csrf_token(),
+                "title": "Artículo actualizado",
+                "description": "Descripción corregida",
+                "lot_number": "EDIT-02",
+                "group_id": str(group_id),
+                "starting_price": "125.50",
+                "commission_percent": "15",
+                "quantity": "4",
+                "sale_mode": "lot",
+                "starts_at": starts_at,
+                "closes_at": closes_at,
+                "remove_photo_ids": str(old_photo_id),
+                "photos": (BytesIO(b"\x89PNG\r\n\x1a\nnew"), "new.png"),
+            },
+            content_type="multipart/form-data",
+            follow_redirects=True,
+        )
+        self.assertIn("se actualizó correctamente", response.get_data(as_text=True))
+
+        with self.app.app_context():
+            auction = db.session.get(Auction, auction_id)
+            self.assertEqual(auction.title, "Artículo actualizado")
+            self.assertEqual(auction.description, "Descripción corregida")
+            self.assertEqual(auction.lot_number, "EDIT-02")
+            self.assertEqual(auction.starting_price, Decimal("125.50"))
+            self.assertEqual(auction.current_price, Decimal("125.50"))
+            self.assertEqual(auction.commission_percent, Decimal("15.00"))
+            self.assertEqual(auction.quantity, 4)
+            self.assertEqual(auction.sale_mode, "lot")
+            self.assertEqual(auction.starts_at, original_starts_at)
+            self.assertEqual(auction.closes_at, original_closes_at)
+            self.assertEqual(len(auction.photos), 1)
+            self.assertEqual(auction.photos[0].filename, "new.png")
+
+    def test_editing_lot_dates_is_explicit_and_updates_countdown(self):
+        self.login()
+        self.create_lot("EDIT-TIME")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            group_id = auction.group_id
+            new_start = (datetime.now(timezone.utc) + timedelta(days=2)).astimezone(
+                ZoneInfo("America/Montevideo")
+            )
+            new_close = new_start + timedelta(hours=3)
+
+        response = self.client.post(
+            f"/area-privada/lotes/{auction_id}/editar",
+            data={
+                "csrf_token": self.csrf_token(),
+                "title": "Artículo actualizado",
+                "description": "Descripción corregida",
+                "lot_number": "EDIT-TIME",
+                "group_id": str(group_id),
+                "starting_price": "100",
+                "commission_percent": "20",
+                "quantity": "3",
+                "sale_mode": "units",
+                "starts_at": new_start.strftime("%Y-%m-%dT%H:%M"),
+                "closes_at": new_close.strftime("%Y-%m-%dT%H:%M"),
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se actualizó correctamente", response.get_data(as_text=True))
+
+        with self.app.app_context():
+            auction = db.session.get(Auction, auction_id)
+            self.assertEqual(
+                auction.starts_at,
+                new_start.astimezone(timezone.utc).replace(
+                    second=0, microsecond=0, tzinfo=None
+                ),
+            )
+            self.assertEqual(
+                auction.closes_at,
+                new_close.astimezone(timezone.utc).replace(
+                    second=0, microsecond=0, tzinfo=None
+                ),
+            )
+
+    def test_editing_a_lot_with_bids_preserves_auction_terms(self):
+        self.login()
+        self.create_lot("LOCKED-01")
+        user_id = self.login_user()
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            group_id = auction.group_id
+            starts_at = auction.starts_at
+            closes_at = auction.closes_at
+            db.session.add(
+                Bid(amount=Decimal("150.00"), auction=auction, user_id=user_id)
+            )
+            auction.current_price = Decimal("150.00")
+            db.session.commit()
+
+        edit_url = f"/area-privada/lotes/{auction_id}/editar"
+        edit_page = self.client.get(edit_url)
+        self.assertIn(b"tiene pujas o pagos registrados", edit_page.data)
+        response = self.client.post(
+            edit_url,
+            data={
+                "csrf_token": self.csrf_token(),
+                "title": "Artículo corregido",
+                "description": "Descripción corregida",
+                "lot_number": "ALTERADO",
+                "group_id": str(group_id),
+                "starting_price": "1",
+                "commission_percent": "99",
+                "quantity": "100",
+                "sale_mode": "lot",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se actualizó correctamente", response.get_data(as_text=True))
+
+        with self.app.app_context():
+            auction = db.session.get(Auction, auction_id)
+            self.assertEqual(auction.title, "Artículo corregido")
+            self.assertEqual(auction.description, "Descripción corregida")
+            self.assertEqual(auction.lot_number, "LOCKED-01")
+            self.assertEqual(auction.starting_price, Decimal("100.00"))
+            self.assertEqual(auction.current_price, Decimal("150.00"))
+            self.assertEqual(auction.commission_percent, Decimal("20.00"))
+            self.assertEqual(auction.quantity, 3)
+            self.assertEqual(auction.sale_mode, "units")
+            self.assertEqual(auction.starts_at, starts_at)
+            self.assertEqual(auction.closes_at, closes_at)
+
     def test_duration_is_whole_hours_and_cannot_exceed_seven_days(self):
         self.login()
         invalid = self.create_lot("D-169", duration_hours="169")
