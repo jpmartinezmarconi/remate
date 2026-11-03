@@ -7,6 +7,7 @@ from unittest.mock import patch
 from app import create_app
 from app.database import db
 from models.auction import Auction
+from models.auction_group import AuctionGroup
 
 
 class TelegramBotConfig:
@@ -34,12 +35,13 @@ class TelegramBotTest(unittest.TestCase):
                         lot_number="R-12",
                         starting_price=Decimal("100"),
                         current_price=Decimal("125"),
-                        commission_percent=Decimal("16.67"),
+                        commission_percent=Decimal("20"),
                         quantity=1,
                         sale_mode="lot",
                         group_name="Colección",
                         starts_at=now - timedelta(minutes=5),
                         closes_at=now + timedelta(hours=2),
+                        sales_group=AuctionGroup(name="Colección"),
                     ),
                     Auction(
                         title="Juego de sillas",
@@ -47,12 +49,13 @@ class TelegramBotTest(unittest.TestCase):
                         lot_number="U-03",
                         starting_price=Decimal("50"),
                         current_price=Decimal("50"),
-                        commission_percent=Decimal("16.67"),
+                        commission_percent=Decimal("20"),
                         quantity=4,
                         sale_mode="units",
                         group_name="Muebles",
                         starts_at=now + timedelta(days=2),
                         closes_at=now + timedelta(days=3),
+                        sales_group=AuctionGroup(name="Muebles"),
                     ),
                 ]
             )

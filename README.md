@@ -46,7 +46,9 @@ flask --app main db upgrade --directory MiProyecto/migrations
 
 Para cambios posteriores, genera una migración con `flask --app main db migrate --directory MiProyecto/migrations -m "Descripción del cambio"` y luego aplica `flask --app main db upgrade --directory MiProyecto/migrations`. El punto de entrada WSGI de Render aplica las migraciones pendientes al iniciar.
 
-Los modelos están en `models/`. El inicio muestra un máximo de cinco grupos y cinco lotes destacados por grupo; `/subastas-activas` muestra las subastas activas y las próximas. Las pujas por unidades se expresan por unidad y adjudican toda la cantidad al ganador. Las ofertas actuales se muestran cuando un lote ya recibió pujas.
+Los modelos están en `models/`. La comisión general es del 20% y se propone como valor inicial para cada nuevo lote; el porcentaje se puede revisar para cada artículo y el valor publicado en su ficha es el aplicable. En el área privada se crean grupos de venta independientes y luego se asignan lotes a cada grupo; los grupos y lotes sin historial de pujas o pagos se pueden eliminar individualmente o en conjunto. La portada muestra un máximo de cinco grupos y cinco lotes destacados por grupo; `/subastas-activas` muestra las subastas activas y las próximas.
+
+Las subastas duran de 1 a 168 horas enteras (máximo 7 días). Las ofertas mínimas aumentan según el precio actual: $U 50 hasta $U 500, $U 100 por encima de $U 500 y hasta $U 2.000, $U 500 por encima de $U 2.000 y hasta $U 10.000, y $U 1.000 por encima de $U 10.000. En ventas por unidades, estos importes son por unidad.
 
 ## Mi cuenta y pagos
 
@@ -54,7 +56,7 @@ Las cuentas nuevas registran nombre completo, teléfono, dirección de envío, c
 
 ## Área privada
 
-`/area-privada` permite crear lotes, asignar número, grupo, precio base, comisión porcentual, modalidad de venta, cantidad, duración, fotos y fecha de inicio. Las fechas se ingresan en hora de Uruguay. Los artículos futuros se publican como “Próximamente”; las cuentas registradas pueden pedir un recordatorio por email 24 horas antes. Si se suscriben dentro de las últimas 24 horas, el aviso se envía en el siguiente ciclo programado. Desde el panel se eligen los lotes destacados de cada grupo. Configura `PASSWORD_AREA_PRIVADA` como variable de entorno local o de Render; no guardes contraseñas en Git. Las fotos se almacenan en la base de datos para persistir con Neon, sin límite de cantidad y con un máximo de 8 MB por archivo. Solo se aceptan JPG, PNG, GIF y WebP.
+`/area-privada` permite crear grupos de ventas independientes y asignarles lotes con número, precio base, comisión porcentual, modalidad de venta, cantidad, duración en horas enteras (máximo 168), fotos y fecha de inicio. Se pueden eliminar grupos y lotes, salvo que tengan pujas o pagos asociados; el historial se conserva. Las fechas se ingresan en hora de Uruguay. Los artículos futuros se publican como “Próximamente”; las cuentas registradas pueden pedir un recordatorio por email 24 horas antes. Si se suscriben dentro de las últimas 24 horas, el aviso se envía en el siguiente ciclo programado. Desde el panel se eligen los lotes destacados de cada grupo. Configura `PASSWORD_AREA_PRIVADA` como variable de entorno local o de Render; no guardes contraseñas en Git. Las fotos se almacenan en la base de datos para persistir con Neon, sin límite de cantidad y con un máximo de 8 MB por archivo. Solo se aceptan JPG, PNG, GIF y WebP.
 
 ## Asistente de ayuda
 

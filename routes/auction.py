@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 from sqlalchemy import func
@@ -32,6 +32,16 @@ def cover_photo_ids(auctions: list[Auction]) -> dict[int, int]:
         .all()
     )
     return {auction_id: photo_id for auction_id, photo_id in rows}
+
+
+def minimum_bid_increment(current_price: Decimal) -> Decimal:
+    if current_price <= Decimal("500"):
+        return Decimal("50")
+    if current_price <= Decimal("2000"):
+        return Decimal("100")
+    if current_price <= Decimal("10000"):
+        return Decimal("500")
+    return Decimal("1000")
 
 
 @auction_bp.get("/")
@@ -145,8 +155,24 @@ def place_bid(auction_id: int):
         return redirect(url_for("auction.detail", auction_id=auction.id))
 
     if amount <= Decimal(auction.current_price):
+        flash("Tu oferta no puede ser menor o igual a la oferta actual.", "danger")
+        return redirect(url_for("auction.detail", auction_id=auction.id))
+    current_price = Decimal(auction.current_price)
+    bid_increment = minimum_bid_increment(current_price)
+    amount_above_current = amount - current_price
+    valid_steps = max(
+        1,
+        int(
+            (amount_above_current / bid_increment).to_integral_value(
+                rounding=ROUND_CEILING
+            )
+        ),
+    )
+    next_valid_offer = current_price + bid_increment * valid_steps
+    if amount_above_current < bid_increment or amount_above_current % bid_increment:
         flash(
-            f"Tu oferta debe superar el precio actual de ${auction.current_price:,.2f}.",
+            f"La próxima oferta válida es $U {next_valid_offer:,.2f}; "
+            f"las pujas avanzan en saltos de $U {bid_increment:,.2f}.",
             "danger",
         )
         return redirect(url_for("auction.detail", auction_id=auction.id))

@@ -8,7 +8,9 @@ from zoneinfo import ZoneInfo
 from app import create_app
 from app.auction_reminders import send_due_auction_reminders
 from app.database import db
+from routes.auction import minimum_bid_increment
 from models.auction import Auction
+from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
 from models.auction_payment import AuctionPayment
 from models.auction_reminder import AuctionReminder
@@ -37,6 +39,7 @@ class PrivateAreaTest(unittest.TestCase):
         with self.app.app_context():
             db.drop_all()
             db.create_all()
+        self.created_groups = {}
         self.client.get("/area-privada")
 
     def tearDown(self):
@@ -61,7 +64,12 @@ class PrivateAreaTest(unittest.TestCase):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
         self.assertIn("Funcionamiento del remate", page)
-        self.assertIn("16,67% de comisión", page)
+        self.assertIn("20% de comisión", page)
+        self.assertIn("Incrementos de las pujas", page)
+        self.assertIn("Hasta $U 500: de $U 50 en $U 50", page)
+        self.assertIn("Más de $U 500 y hasta $U 2.000: de $U 100 en $U 100", page)
+        self.assertIn("Más de $U 2.000 y hasta $U 10.000: de $U 500 en $U 500", page)
+        self.assertIn("Más de $U 10.000: de $U 1.000 en $U 1.000", page)
         self.assertIn("Av. 8 de Octubre 4336/4328", page)
         labels = (
             "Inicio",
@@ -77,14 +85,24 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
 
     def create_lot(self, lot_number, *, featured=False, photos=None, **overrides):
+        group_name = overrides.pop("group_name", "Colección")
+        if group_name not in self.created_groups:
+            self.client.post(
+                "/area-privada/grupos",
+                data={"csrf_token": self.csrf_token(), "name": group_name},
+            )
+            with self.app.app_context():
+                self.created_groups[group_name] = AuctionGroup.query.filter_by(
+                    name=group_name
+                ).one().id
         data = {
             "csrf_token": self.csrf_token(),
             "title": f"Artículo {lot_number}",
             "description": "Descripción del artículo",
             "lot_number": lot_number,
-            "group_name": "Colección",
+            "group_id": str(self.created_groups[group_name]),
             "starting_price": "100.00",
-            "commission_percent": "12.5",
+            "commission_percent": "20",
             "quantity": "3",
             "sale_mode": "units",
             "start_mode": "now",
@@ -141,7 +159,7 @@ class PrivateAreaTest(unittest.TestCase):
             image_id = image.id
             self.assertEqual(auction.sale_mode, "units")
             self.assertEqual(auction.quantity, 3)
-            self.assertEqual(str(auction.commission_percent), "12.50")
+            self.assertEqual(str(auction.commission_percent), "20.00")
             self.assertEqual(len(auction.photos), 6)
             self.assertEqual(image.content_type, "image/png")
 
@@ -155,6 +173,122 @@ class PrivateAreaTest(unittest.TestCase):
         image_response = self.client.get(f"/area-privada/fotos/{image_id}")
         self.assertEqual(image_response.status_code, 200)
         self.assertEqual(image_response.mimetype, "image/png")
+
+    def test_creates_groups_separately_and_assigns_lots_to_them(self):
+        self.login()
+        response = self.client.post(
+            "/area-privada/grupos",
+            data={"csrf_token": self.csrf_token(), "name": "Remate de junio"},
+            follow_redirects=True,
+        )
+        self.assertIn("Se creó el grupo", response.get_data(as_text=True))
+        with self.app.app_context():
+            group = AuctionGroup.query.filter_by(name="Remate de junio").one()
+            group_id = group.id
+
+        self.client.post(
+            "/area-privada/lotes",
+            data={
+                "csrf_token": self.csrf_token(),
+                "title": "Lote de prueba",
+                "description": "Descripción",
+                "lot_number": "J-01",
+                "group_id": str(group_id),
+                "starting_price": "100",
+                "commission_percent": "20",
+                "quantity": "1",
+                "sale_mode": "lot",
+                "start_mode": "now",
+                "duration_hours": "48",
+            },
+            follow_redirects=True,
+        )
+        with self.app.app_context():
+            auction = Auction.query.one()
+            self.assertEqual(auction.group_id, group_id)
+            self.assertEqual(auction.group_name, "Remate de junio")
+            self.assertEqual(auction.closes_at - auction.starts_at, timedelta(hours=48))
+
+    def test_new_lot_form_defaults_commission_to_twenty_percent(self):
+        self.login()
+        dashboard = self.client.get("/area-privada/panel").get_data(as_text=True)
+        self.assertIn('id="commission" name="commission_percent"', dashboard)
+        self.assertIn('value="20" required', dashboard)
+        self.create_lot("COM-20")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            self.assertEqual(auction.commission_percent, Decimal("20.00"))
+
+    def test_duration_is_whole_hours_and_cannot_exceed_seven_days(self):
+        self.login()
+        invalid = self.create_lot("D-169", duration_hours="169")
+        self.assertIn("entre 1 y 168 horas", invalid.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 0)
+
+        self.create_lot("D-168", duration_hours="168")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            self.assertEqual(auction.closes_at - auction.starts_at, timedelta(days=7))
+
+    def test_can_delete_selected_lots_and_then_the_entire_empty_group(self):
+        self.login()
+        self.create_lot("DEL-01")
+        self.create_lot("DEL-02")
+        self.create_lot("DEL-03")
+        group_id = self.created_groups["Colección"]
+
+        response = self.client.post(
+            f"/area-privada/grupos/{group_id}/lotes/eliminar",
+            data={
+                "csrf_token": self.csrf_token(),
+                "auction_ids": ["1", "2"],
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("Se eliminaron 2 lote(s)", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 1)
+
+        response = self.client.post(
+            f"/area-privada/grupos/{group_id}/eliminar",
+            data={"csrf_token": self.csrf_token()},
+            follow_redirects=True,
+        )
+        self.assertIn("Se eliminó el grupo", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 0)
+            self.assertEqual(AuctionGroup.query.count(), 0)
+
+    def test_group_and_lot_deletion_preserve_lots_with_bids(self):
+        self.login()
+        self.create_lot("KEEP-01")
+        group_id = self.created_groups["Colección"]
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            bidder = User(username="bidder", email="bidder@example.test")
+            bidder.set_password("safe-password")
+            db.session.add(bidder)
+            db.session.flush()
+            db.session.add(Bid(amount=150, auction=auction, bidder=bidder))
+            db.session.commit()
+
+        response = self.client.post(
+            f"/area-privada/grupos/{group_id}/lotes/eliminar",
+            data={"csrf_token": self.csrf_token(), "auction_ids": [str(auction_id)]},
+            follow_redirects=True,
+        )
+        self.assertIn("no se pueden eliminar lotes", response.get_data(as_text=True).lower())
+        response = self.client.post(
+            f"/area-privada/grupos/{group_id}/eliminar",
+            data={"csrf_token": self.csrf_token()},
+            follow_redirects=True,
+        )
+        self.assertIn("no se pueden eliminar lotes", response.get_data(as_text=True).lower())
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 1)
+            self.assertEqual(Bid.query.count(), 1)
 
     def test_only_five_active_lots_per_group_can_be_featured(self):
         self.login()
@@ -316,6 +450,18 @@ class PrivateAreaTest(unittest.TestCase):
         with self.client.session_transaction() as session:
             session["user_id"] = user_id
 
+        too_low = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "149"},
+            follow_redirects=True,
+        )
+        self.assertIn("próxima oferta válida es $U 150.00", too_low.get_data(as_text=True))
+        off_increment = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "151"},
+            follow_redirects=True,
+        )
+        self.assertIn("próxima oferta válida es $U 200.00", off_increment.get_data(as_text=True))
         self.client.post(
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "150"},
@@ -323,6 +469,15 @@ class PrivateAreaTest(unittest.TestCase):
         detail = self.client.get(f"/subasta/{auction_id}")
         self.assertIn(b"OFERTA ACTUAL", detail.data)
         self.assertIn(b"$U 150.00", detail.data)
+        self.assertIn(b"saltos de $U 50.00", detail.data)
+
+    def test_bid_increment_tiers_follow_current_price_thresholds(self):
+        self.assertEqual(minimum_bid_increment(Decimal("500")), Decimal("50"))
+        self.assertEqual(minimum_bid_increment(Decimal("500.01")), Decimal("100"))
+        self.assertEqual(minimum_bid_increment(Decimal("2000")), Decimal("100"))
+        self.assertEqual(minimum_bid_increment(Decimal("2000.01")), Decimal("500"))
+        self.assertEqual(minimum_bid_increment(Decimal("10000")), Decimal("500"))
+        self.assertEqual(minimum_bid_increment(Decimal("10000.01")), Decimal("1000"))
 
     def test_account_shows_wins_and_records_pending_payment_including_commission(self):
         self.login()
@@ -354,7 +509,7 @@ class PrivateAreaTest(unittest.TestCase):
         dashboard = self.client.get("/cuenta")
         self.assertIn(b"Subastas que gan\xc3\xa9", dashboard.data)
         self.assertIn(b"Art\xc3\xadculo P-01", dashboard.data)
-        self.assertIn(b"$U 506.25", dashboard.data)
+        self.assertIn(b"$U 540.00", dashboard.data)
 
         payment_page = self.client.get(f"/cuenta/subasta/{auction_id}/pagar")
         self.assertIn(b"Tarjeta de cr\xc3\xa9dito o d\xc3\xa9bito", payment_page.data)
@@ -375,7 +530,7 @@ class PrivateAreaTest(unittest.TestCase):
             payment = AuctionPayment.query.one()
             self.assertEqual(payment.method, "mercadopago")
             self.assertEqual(payment.status, "pending")
-            self.assertEqual(payment.amount, Decimal("506.25"))
+            self.assertEqual(payment.amount, Decimal("540.00"))
 
     def test_profile_is_required_to_bid_and_can_be_completed_from_account(self):
         self.login()

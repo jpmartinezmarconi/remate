@@ -1,4 +1,5 @@
 from .auction import Auction
+from .auction_group import AuctionGroup
 from .auction_image import AuctionImage
 from .auction_reminder import AuctionReminder
 from .auction_payment import AuctionPayment
@@ -7,6 +8,7 @@ from .user import User
 
 __all__ = [
     "Auction",
+    "AuctionGroup",
     "AuctionImage",
     "AuctionPayment",
     "AuctionReminder",

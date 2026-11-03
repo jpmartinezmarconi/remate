@@ -171,7 +171,7 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
     if any(term in normalized_question for term in ("comision", "porcentaje", "ganancia del remate", "recargo")):
         return (
             "A la oferta ganadora se le suma la comisión indicada en la ficha del lote. "
-            "La comisión informada para estos remates es 16,67%; verificá siempre el porcentaje publicado para cada artículo.",
+            "La comisión general es 20%; verificá siempre el porcentaje publicado para cada artículo.",
             [{"label": "Ver artículos en remate", "url": url_for("auction.active_auctions")}],
         )
 

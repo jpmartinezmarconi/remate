@@ -75,4 +75,10 @@ def create_app(config_class=Config):
     def format_uyu(value):
         return f"$U {value:,.2f}"
 
+    @app.context_processor
+    def inject_bid_helpers():
+        from routes.auction import minimum_bid_increment
+
+        return {"minimum_bid_increment": minimum_bid_increment}
+
     return app

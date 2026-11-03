@@ -22,7 +22,10 @@ from werkzeug.utils import secure_filename
 
 from app.database import db
 from models.auction import Auction
+from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
+from models.auction_payment import AuctionPayment
+from models.bid import Bid
 from .security import csrf_protect
 
 
@@ -158,18 +161,12 @@ def logout():
 @private_area_required
 def dashboard():
     auctions = Auction.query.order_by(Auction.created_at.desc(), Auction.id.desc()).all()
+    groups = AuctionGroup.query.order_by(AuctionGroup.name.asc()).all()
     photo_counts = dict(
         db.session.query(AuctionImage.auction_id, func.count(AuctionImage.id))
         .group_by(AuctionImage.auction_id)
         .all()
     )
-    groups = [
-        row[0]
-        for row in db.session.query(Auction.group_name)
-        .distinct()
-        .order_by(Auction.group_name)
-        .all()
-    ]
     return render_template(
         "private_dashboard.html",
         auctions=auctions,
@@ -190,7 +187,7 @@ def create_auction():
     title = request.form.get("title", "").strip()
     description = request.form.get("description", "").strip()
     lot_number = request.form.get("lot_number", "").strip()
-    group_name = request.form.get("group_name", "").strip() or "General"
+    group_id = request.form.get("group_id", "").strip()
     sale_mode = request.form.get("sale_mode", "")
     start_mode = request.form.get("start_mode", "")
     try:
@@ -199,9 +196,7 @@ def create_auction():
             request.form.get("commission_percent", "0").replace(",", ".")
         )
         quantity = int(request.form.get("quantity", "1"))
-        duration_hours = Decimal(
-            request.form.get("duration_hours", "").replace(",", ".")
-        )
+        duration_hours = int(request.form.get("duration_hours", ""))
     except (InvalidOperation, ValueError):
         flash("Revisá los valores de precio, comisión, cantidad y duración.", "danger")
         return redirect(url_for("private_area.dashboard"))
@@ -212,8 +207,9 @@ def create_auction():
     if not lot_number or len(lot_number) > 40:
         flash("Ingresá un número de lote de hasta 40 caracteres.", "danger")
         return redirect(url_for("private_area.dashboard"))
-    if len(group_name) > 100:
-        flash("El nombre del grupo puede tener hasta 100 caracteres.", "danger")
+    group = db.session.get(AuctionGroup, group_id) if group_id.isdigit() else None
+    if group is None:
+        flash("Creá un grupo de ventas y seleccionalo para el lote.", "danger")
         return redirect(url_for("private_area.dashboard"))
     if sale_mode not in {"lot", "units"}:
         flash("Seleccioná si se vende como lote o por unidades.", "danger")
@@ -235,11 +231,8 @@ def create_auction():
     if quantity < 1 or quantity > 2147483647:
         flash("La cantidad debe ser un número entero positivo válido.", "danger")
         return redirect(url_for("private_area.dashboard"))
-    if (
-        not duration_hours.is_finite()
-        or duration_hours <= 0
-    ):
-        flash("La duración debe ser mayor a cero.", "danger")
+    if duration_hours < 1 or duration_hours > 168:
+        flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
         return redirect(url_for("private_area.dashboard"))
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -262,9 +255,7 @@ def create_auction():
         return redirect(url_for("private_area.dashboard"))
 
     try:
-        closes_at = starts_at + timedelta(
-            seconds=float(duration_hours * Decimal("3600"))
-        )
+        closes_at = starts_at + timedelta(hours=duration_hours)
     except (OverflowError, ValueError):
         flash("La duración ingresada supera el máximo admitido.", "danger")
         return redirect(url_for("private_area.dashboard"))
@@ -273,7 +264,7 @@ def create_auction():
         return redirect(url_for("private_area.dashboard"))
 
     duplicate_lot = Auction.query.filter_by(
-        group_name=group_name, lot_number=lot_number
+        group_id=group.id, lot_number=lot_number
     ).first()
     if duplicate_lot:
         flash("Ese número de lote ya existe dentro del grupo seleccionado.", "danger")
@@ -281,7 +272,7 @@ def create_auction():
 
     featured_on_home = request.form.get("featured_on_home") == "on"
     if featured_on_home:
-        feature_limit_message = _feature_limit_message(group_name, now)
+        feature_limit_message = _feature_limit_message(group.name, now)
         if feature_limit_message:
             flash(feature_limit_message, "danger")
             return redirect(url_for("private_area.dashboard"))
@@ -295,7 +286,8 @@ def create_auction():
         title=title,
         description=description,
         lot_number=lot_number,
-        group_name=group_name,
+        group_name=group.name,
+        sales_group=group,
         starting_price=starting_price,
         current_price=starting_price,
         commission_percent=commission_percent.quantize(Decimal("0.01")),
@@ -309,6 +301,122 @@ def create_auction():
     db.session.add(auction)
     db.session.commit()
     flash(f"El lote {lot_number} se publicó correctamente.", "success")
+    return redirect(url_for("private_area.dashboard"))
+
+
+@private_area_bp.post("/grupos")
+@private_area_required
+@csrf_protect
+def create_group():
+    name = request.form.get("name", "").strip()
+    if not name or len(name) > 100:
+        flash("Ingresá un nombre de grupo de hasta 100 caracteres.", "danger")
+        return redirect(url_for("private_area.dashboard"))
+    if AuctionGroup.query.filter(func.lower(AuctionGroup.name) == name.lower()).first():
+        flash("Ya existe un grupo con ese nombre.", "warning")
+        return redirect(url_for("private_area.dashboard"))
+
+    db.session.add(AuctionGroup(name=name))
+    db.session.commit()
+    flash(f"Se creó el grupo «{name}». Ya podés agregarle lotes.", "success")
+    return redirect(url_for("private_area.dashboard"))
+
+
+def _lots_with_history(auction_ids: list[int]) -> list[Auction]:
+    if not auction_ids:
+        return []
+    ids_with_bids = {
+        row[0]
+        for row in db.session.query(Bid.auction_id)
+        .filter(Bid.auction_id.in_(auction_ids))
+        .distinct()
+        .all()
+    }
+    ids_with_payments = {
+        row[0]
+        for row in db.session.query(AuctionPayment.auction_id)
+        .filter(AuctionPayment.auction_id.in_(auction_ids))
+        .all()
+    }
+    blocked_ids = ids_with_bids | ids_with_payments
+    return [auction for auction in Auction.query.filter(Auction.id.in_(blocked_ids)).all()]
+
+
+def _delete_auctions_without_history(auctions: list[Auction]) -> bool:
+    blocked_lots = _lots_with_history([auction.id for auction in auctions])
+    if blocked_lots:
+        lot_numbers = ", ".join(auction.display_lot_number for auction in blocked_lots)
+        flash(
+            "No se pueden eliminar lotes que ya tienen pujas o pagos registrados. "
+            f"Revisá: {lot_numbers}.",
+            "danger",
+        )
+        return False
+    for auction in auctions:
+        db.session.delete(auction)
+    return True
+
+
+@private_area_bp.post("/grupos/<int:group_id>/eliminar")
+@private_area_required
+@csrf_protect
+def delete_group(group_id: int):
+    group = db.session.execute(
+        db.select(AuctionGroup)
+        .where(AuctionGroup.id == group_id)
+        .with_for_update()
+    ).scalar_one_or_none()
+    if group is None:
+        abort(404)
+    auctions = (
+        Auction.query.filter_by(group_id=group.id)
+        .order_by(Auction.id.asc())
+        .with_for_update()
+        .all()
+    )
+    if not _delete_auctions_without_history(auctions):
+        db.session.rollback()
+        return redirect(url_for("private_area.dashboard"))
+    group_name = group.name
+    db.session.delete(group)
+    db.session.commit()
+    flash(f"Se eliminó el grupo «{group_name}» y sus lotes.", "success")
+    return redirect(url_for("private_area.dashboard"))
+
+
+@private_area_bp.post("/grupos/<int:group_id>/lotes/eliminar")
+@private_area_required
+@csrf_protect
+def delete_group_auctions(group_id: int):
+    group = db.session.get(AuctionGroup, group_id)
+    if group is None:
+        abort(404)
+    raw_ids = request.form.getlist("auction_ids")
+    try:
+        auction_ids = list(dict.fromkeys(int(value) for value in raw_ids))
+    except ValueError:
+        flash("La selección de lotes no es válida.", "danger")
+        return redirect(url_for("private_area.dashboard"))
+    if not auction_ids or any(auction_id <= 0 for auction_id in auction_ids):
+        flash("Seleccioná uno o más lotes para eliminar.", "warning")
+        return redirect(url_for("private_area.dashboard"))
+    auctions = (
+        Auction.query.filter(
+            Auction.group_id == group.id,
+            Auction.id.in_(auction_ids),
+        )
+        .order_by(Auction.id.asc())
+        .with_for_update()
+        .all()
+    )
+    if len(auctions) != len(auction_ids):
+        flash("La selección contiene lotes que no pertenecen a este grupo.", "danger")
+        return redirect(url_for("private_area.dashboard"))
+    if not _delete_auctions_without_history(auctions):
+        db.session.rollback()
+        return redirect(url_for("private_area.dashboard"))
+    db.session.commit()
+    flash(f"Se eliminaron {len(auctions)} lote(s) del grupo «{group.name}».", "success")
     return redirect(url_for("private_area.dashboard"))
 
 

@@ -13,10 +13,13 @@ class Auction(db.Model):
     lot_number = db.Column(db.String(40), nullable=True)
     starting_price = db.Column(db.Numeric(12, 2), nullable=False)
     current_price = db.Column(db.Numeric(12, 2), nullable=False)
-    commission_percent = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    commission_percent = db.Column(db.Numeric(5, 2), nullable=False, default=20)
     quantity = db.Column(db.Integer, nullable=False, default=1)
     sale_mode = db.Column(db.String(12), nullable=False, default="lot")
     group_name = db.Column(db.String(100), nullable=False, default="General")
+    group_id = db.Column(
+        db.Integer, db.ForeignKey("auction_group.id"), nullable=False, index=True
+    )
     featured_on_home = db.Column(db.Boolean, nullable=False, default=False)
     starts_at = db.Column(
         db.DateTime(timezone=True),
@@ -33,6 +36,7 @@ class Auction(db.Model):
     seller_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
     seller = db.relationship("User", back_populates="auctions")
+    sales_group = db.relationship("AuctionGroup", back_populates="auctions")
     bids = db.relationship(
         "Bid", back_populates="auction", cascade="all, delete-orphan", lazy="select"
     )
