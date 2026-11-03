@@ -36,7 +36,7 @@ Plataforma web de subastas construida con Flask, SQLAlchemy y PostgreSQL. Incluy
 
 ## Base de datos y migraciones
 
-La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite.
+La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite. En Render configura `DATABASE_URL` con la URL PostgreSQL persistente de Neon, tanto en el servicio web como en el Cron Job. La aplicación ahora se niega a iniciar en Render si falta esta variable o apunta a SQLite: el disco local de Render es efímero y puede perder los lotes al desplegar.
 
 El esquema de la aplicación está versionado en `MiProyecto/migrations/`. En local, aplica las migraciones:
 
@@ -76,7 +76,7 @@ El script registra la URL segura del webhook y los comandos `/start` y `/help`. 
 
 ## Despliegue en Render
 
-El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory y un Cron Job que revisa recordatorios y avisos de pujas superadas cada cinco minutos. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes y el servicio comprueba `/api/health`. Proporciona `DATABASE_URL` de Neon, `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Configura `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en el Cron Job. El puerto SMTP predeterminado es 587 (STARTTLS). Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
+El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory y un Cron Job que revisa recordatorios y avisos de pujas superadas cada cinco minutos. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes y el servicio comprueba `/api/health`. Configura la URL PostgreSQL persistente de Neon como `DATABASE_URL` en el servicio web y en el Cron Job; no uses SQLite en Render. Proporciona además `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Configura `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en el Cron Job. El puerto SMTP predeterminado es 587 (STARTTLS). Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
 
 ## Estructura
 

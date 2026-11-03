@@ -21,7 +21,7 @@ flask --app main run --debug
 
 Abre <http://127.0.0.1:5000>. La ruta `/api/health` devuelve el estado de salud en JSON.
 
-El archivo `.env` contiene valores de desarrollo. `DATABASE_URL` admite SQLite para local y URLs PostgreSQL para producción. Configura `PASSWORD_AREA_PRIVADA` localmente y como variable de entorno en Render; no guardes contraseñas en Git. No uses la clave secreta de desarrollo en un entorno publicado.
+El archivo `.env` contiene valores de desarrollo. `DATABASE_URL` admite SQLite para local y URLs PostgreSQL para producción. En Render, configura `DATABASE_URL` con una base PostgreSQL persistente (por ejemplo, Neon) tanto para el servicio web como para el Cron Job. La aplicación se niega a iniciar en Render si falta la variable o apunta a SQLite, cuyo almacenamiento local puede perderse al desplegar. Configura `PASSWORD_AREA_PRIVADA` localmente y como variable de entorno en Render; no guardes contraseñas en Git. No uses la clave secreta de desarrollo en un entorno publicado.
 
 ## Base de datos
 
@@ -42,7 +42,7 @@ El bot `@rematemartinezbot` comparte esas respuestas mediante el webhook HTTPS `
 1. Selecciona el repositorio `jpmartinezmarconi/remate`.
 2. Configura **Root Directory** como `MiProyecto`.
 3. Usa `pip install -r requirements.txt` para compilar y `gunicorn wsgi:app` para iniciar.
-4. Configura `DATABASE_URL` con una URL de PostgreSQL y `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Para enviar recordatorios y avisos de pujas superadas, configura las credenciales SMTP y `PUBLIC_BASE_URL` en el Cron Job. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes.
+4. Configura `DATABASE_URL` con la URL PostgreSQL persistente de Neon en el servicio web y en el Cron Job, y configura `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Para enviar recordatorios y avisos de pujas superadas, configura las credenciales SMTP y `PUBLIC_BASE_URL` en el Cron Job. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes.
 
 No guardes secretos ni valores reales de conexión en el repositorio.
 
