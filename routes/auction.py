@@ -201,8 +201,8 @@ def active_auctions():
     )
 
 
-@auction_bp.get("/proximas-subastas")
 @auction_bp.get("/articulos-en-remate")
+@auction_bp.get("/proximas-subastas")
 def upcoming_auctions():
     now = utc_now_naive()
     auctions = (

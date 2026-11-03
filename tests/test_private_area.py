@@ -109,6 +109,7 @@ class PrivateAreaTest(unittest.TestCase):
         )
         positions = [page.index(label) for label in labels]
         self.assertEqual(positions, sorted(positions))
+        self.assertIn('href="/proximas-subastas"', page)
 
     def test_home_hero_slider_links_to_multiple_auction_details(self):
         self.login()
