@@ -462,11 +462,12 @@ main { min-height: 55vh; }
 .detail-image-trigger:hover .detail-image { transform: scale(1.025); }
 .detail-image-single .detail-image { width: 100%; }
 .detail-image-hint { position: absolute; right: .75rem; bottom: .75rem; padding: .4rem .7rem; border: 1px solid #ffffff80; border-radius: 999px; color: #fff; background: #071d32b8; font-size: .78rem; font-weight: 750; opacity: .92; }
+.photo-lightbox:not([open]) { display: none; }
 .photo-lightbox { position: fixed; inset: 0; display: grid; width: 100vw; max-width: none; height: 100vh; max-height: none; grid-template-columns: minmax(3rem, 1fr) minmax(0, auto) minmax(3rem, 1fr); grid-template-rows: 1fr auto; align-items: center; justify-items: center; gap: .75rem; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); border: 0; color: #fff; background: #06121eeF; }
 .photo-lightbox[open] { animation: photo-lightbox-appear .16s ease-out; }
 .photo-lightbox::backdrop { background: #06121eeb; }
-.photo-lightbox-image { grid-column: 2; grid-row: 1; display: block; width: auto; height: auto; max-width: min(78vw, 1500px); max-height: 84vh; object-fit: contain; border-radius: .35rem; box-shadow: 0 18px 70px #0009; }
-.photo-lightbox-close { position: absolute; z-index: 1; top: max(1rem, env(safe-area-inset-top)); right: max(1rem, env(safe-area-inset-right)); display: grid; width: 2.8rem; height: 2.8rem; place-items: center; border: 1px solid #ffffff70; border-radius: 50%; color: #fff; background: #ffffff20; font-size: 1.8rem; line-height: 1; }
+.photo-lightbox-image { grid-column: 2; grid-row: 1; display: block; width: auto; height: auto; max-width: min(70vw, 1100px); max-height: 72vh; object-fit: contain; border-radius: .35rem; box-shadow: 0 18px 70px #0009; }
+.photo-lightbox-close { position: fixed; z-index: 2; top: max(1rem, env(safe-area-inset-top)); right: max(1rem, env(safe-area-inset-right)); display: grid; width: 2.8rem; height: 2.8rem; place-items: center; border: 1px solid #ffffff70; border-radius: 50%; color: #fff; background: #25384dbb; font-size: 1.8rem; line-height: 1; cursor: pointer; }
 .photo-lightbox-nav { grid-row: 1; display: grid; width: 2.8rem; height: 3.5rem; place-items: center; border: 1px solid #ffffff65; border-radius: 999px; color: #fff; background: #ffffff20; font-size: 2.2rem; line-height: 1; }
 .photo-lightbox-nav:hover, .photo-lightbox-close:hover { background: #ffffff38; }
 .photo-lightbox-prev { grid-column: 1; }
@@ -475,7 +476,7 @@ main { min-height: 55vh; }
 @keyframes photo-lightbox-appear { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 575.98px) {
   .photo-lightbox { grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem; gap: .35rem; padding-left: .4rem; padding-right: .4rem; }
-  .photo-lightbox-image { max-width: calc(100vw - 6rem); max-height: 78dvh; }
+  .photo-lightbox-image { max-width: calc(100vw - 6rem); max-height: 68dvh; }
   .photo-lightbox-nav { width: 2.35rem; height: 3rem; }
 }
 @media (prefers-reduced-motion: reduce) {
