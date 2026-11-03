@@ -55,6 +55,21 @@ main { min-height: 55vh; }
 .hero-visual-caption { position: absolute; z-index: 1; right: 1.2rem; bottom: 1.1rem; left: 1.2rem; display: flex; flex-direction: column; color: #fff; text-shadow: 0 1px 5px #00162d; }
 .hero-visual-caption span { font-size: .67rem; font-weight: 800; letter-spacing: .12em; }
 .hero-visual-caption strong { margin-top: .25rem; font-size: 1.45rem; line-height: 1.1; }
+.hero-slider { isolation: isolate; }
+.hero-slider::after { z-index: 1; pointer-events: none; }
+.hero-slides { position: absolute; inset: 0; }
+.hero-slide { position: absolute; inset: 0; display: block; color: inherit; opacity: 0; visibility: hidden; transition: opacity .45s ease; }
+.hero-slide.is-active { z-index: 1; opacity: 1; visibility: visible; }
+.hero-slide:focus-visible { outline: 3px solid #fff; outline-offset: -7px; }
+.hero-slider .hero-visual-caption { right: 4.5rem; z-index: 2; }
+.hero-slider-arrow { position: absolute; z-index: 3; top: 50%; display: grid; width: 2.4rem; height: 2.4rem; place-items: center; padding: 0 0 .2rem; border: 1px solid #ffffffa6; border-radius: 50%; color: #fff; background: #052e59a8; font-size: 1.8rem; line-height: 1; transform: translateY(-50%); }
+.hero-slider-previous { left: .75rem; }
+.hero-slider-next { right: .75rem; }
+.hero-slider-arrow:hover, .hero-slider-arrow:focus-visible { background: var(--rm-red); }
+.hero-slider-dots { position: absolute; z-index: 3; right: 1rem; bottom: .65rem; display: flex; gap: .4rem; }
+.hero-slider-dot { width: .55rem; height: .55rem; padding: 0; border: 1px solid #fff; border-radius: 50%; background: #ffffff75; }
+.hero-slider-dot.is-active { background: #fff; transform: scale(1.2); }
+.hero-slider-arrow:focus-visible, .hero-slider-dot:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .hero-art-placeholder { display: flex; height: 270px; align-items: center; justify-content: center; gap: 1rem; color: var(--rm-navy); background: radial-gradient(circle at 75% 15%, #fff 0 8%, transparent 8.5%), linear-gradient(135deg, #eaf3fa, #9bb9d3); }
 .hero-art-placeholder span { display: grid; width: 98px; height: 98px; place-items: center; border: 3px solid var(--rm-red); border-radius: 50%; color: var(--rm-red); font-size: 2rem; font-weight: 900; }
 .hero-art-placeholder strong { font-size: 1.5rem; font-weight: 900; line-height: 1.05; }
@@ -78,12 +93,27 @@ main { min-height: 55vh; }
 .auction-card { overflow: hidden; border: 1px solid #d8e1e9; border-radius: .55rem; box-shadow: 0 3px 12px #163a5a10; transition: transform .18s ease, box-shadow .18s ease; }
 .auction-card:hover { transform: translateY(-3px); box-shadow: 0 9px 22px #163a5a20; }
 .auction-image-wrap { position: relative; display: block; height: 160px; overflow: hidden; background: #e8eef4; }
+.personal-auctions-section { padding-top: .5rem; padding-bottom: 1.25rem; }
+.recent-auctions-section .auction-image-wrap { height: 92px; }
+.recent-auctions-section .auction-card .card-body { gap: .3rem; padding: .65rem; }
+.recent-auctions-section .auction-card h3 { font-size: .82rem; }
+.recent-auctions-section .auction-summary,
+.recent-auctions-section .auction-quantity { display: none; }
+.recent-auctions-section .auction-prices { gap: .35rem; }
+.recent-auctions-section .auction-prices > div { gap: .12rem; }
+.recent-auctions-section .auction-prices small { font-size: .52rem; }
+.recent-auctions-section .auction-prices span,
+.recent-auctions-section .auction-prices strong { font-size: .72rem; }
+.recent-auctions-section .auction-closing { display: none; }
+.recent-auctions-section .auction-card .btn { padding: .35rem .45rem; font-size: .68rem; }
+.personal-auctions-section .auction-card form .btn { padding: .28rem .45rem; font-size: .68rem; }
 .auction-image { width: 100%; height: 100%; object-fit: cover; transition: transform .25s ease; }
 .auction-card:hover .auction-image { transform: scale(1.035); }
 .placeholder-art { display: grid; place-items: center; background: linear-gradient(135deg, #e0e9f1, #b9cddd); }
 .placeholder-art span { display: grid; width: 60px; height: 60px; place-items: center; border: 2px solid #7391ad; border-radius: 50%; color: #557796; font-weight: 900; }
 .live-tag { position: absolute; top: .55rem; left: .55rem; padding: .32rem .5rem; color: #fff; background: var(--rm-blue); font-size: .58rem; font-weight: 900; letter-spacing: .06em; }
 .live-tag span { display: inline-block; width: 7px; height: 7px; margin-right: .25rem; border-radius: 50%; background: #67e69d; }
+.live-tag.sold-tag { background: #657487; }
 .auction-card .card-body { padding: .8rem; }
 .lot-number { color: #57728e; font-size: .59rem; font-weight: 800; letter-spacing: .1em; }
 .auction-card h3 { margin: .25rem 0; font-size: 1rem; font-weight: 800; line-height: 1.2; }
@@ -193,6 +223,15 @@ main { min-height: 55vh; }
 .detail-price { color: var(--rm-navy); font-size: 2.5rem; font-weight: 800; }
 .closing-box { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem; background: var(--rm-pale); font-size: .8rem; }
 .closing-box span { color: #586b7e; font-size: .63rem; font-weight: 800; letter-spacing: .1em; }
+.auction-countdown { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 1rem; border: 1px solid #d5e0eb; border-radius: .4rem; color: var(--rm-navy); background: #f3f8fc; }
+.auction-countdown > span { font-size: .68rem; font-weight: 800; letter-spacing: .08em; }
+.auction-countdown strong { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.auction-card-countdown { margin: .25rem 0 .65rem; padding: .45rem .55rem; border-radius: .25rem; }
+.auction-card-countdown > span { font-size: .52rem; }
+.auction-card-countdown strong { font-size: .85rem; }
+.auction-countdown.is-urgent, .auction-countdown.is-finished { border-color: #e1a1aa; color: #b40c23; background: #fff0f2; }
+.auction-countdown.is-urgent strong, .auction-countdown.is-finished strong { animation: countdown-pulse 1s ease-in-out infinite alternate; }
+@keyframes countdown-pulse { to { opacity: .65; } }
 .seller-note { color: #64758a; font-size: .78rem; text-align: center; }
 .bid-list { max-width: 700px; }
 
@@ -234,10 +273,10 @@ main { min-height: 55vh; }
   .telegram-card { align-items: center; flex-direction: column; gap: 1rem; text-align: center; }
   .telegram-copy p { font-size: .9rem; }
 }
-
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; }
+  .auction-countdown.is-urgent strong, .auction-countdown.is-finished strong { animation: none; }
 }
 
 .rm-navbar {

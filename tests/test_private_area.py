@@ -6,12 +6,19 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app import create_app
-from app.auction_reminders import send_due_auction_reminders
+from app.auction_reminders import (
+    send_due_auction_closing_reminders,
+    send_due_auction_outbid_notifications,
+    send_due_auction_reminders,
+)
 from app.database import db
 from routes.auction import minimum_bid_increment
 from models.auction import Auction
+from models.auction_closing_reminder import AuctionClosingReminder
+from models.auction_favorite import AuctionFavorite
 from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
+from models.auction_outbid_notification import AuctionOutbidNotification
 from models.auction_payment import AuctionPayment
 from models.auction_reminder import AuctionReminder
 from models.bid import Bid
@@ -60,6 +67,25 @@ class PrivateAreaTest(unittest.TestCase):
             },
         )
 
+    def login_user(self, username="member"):
+        with self.app.app_context():
+            user = User(
+                username=username,
+                full_name="Test Member",
+                email=f"{username}@example.test",
+                phone="099123456",
+                shipping_address="18 de Julio 1000",
+                city="Montevideo",
+                postal_code="11100",
+            )
+            user.set_password("safe-password")
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
+        with self.client.session_transaction() as session:
+            session["user_id"] = user_id
+        return user_id
+
     def test_navigation_links_follow_requested_order(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
@@ -76,13 +102,33 @@ class PrivateAreaTest(unittest.TestCase):
             "Ingresar",
             "Crear cuenta",
             "Subastas activas",
-            "Artículos en remate",
+            "Próximas subastas",
             "Cómo funciona",
             "Contacto",
             "Área privada",
         )
         positions = [page.index(label) for label in labels]
         self.assertEqual(positions, sorted(positions))
+
+    def test_home_hero_slider_links_to_multiple_auction_details(self):
+        self.login()
+        self.create_lot("SLIDE-01")
+        self.create_lot("SLIDE-02")
+        with self.app.app_context():
+            auctions = Auction.query.order_by(Auction.id.asc()).all()
+            auctions[0].image_url = "https://example.test/slide-01.jpg"
+            auctions[1].image_url = "https://example.test/slide-02.jpg"
+            auction_ids = [auction.id for auction in auctions]
+            db.session.commit()
+
+        page = self.client.get("/").get_data(as_text=True)
+
+        self.assertIn('data-hero-slider', page)
+        self.assertIn('data-hero-dot="0"', page)
+        self.assertIn('data-hero-dot="1"', page)
+        for auction_id in auction_ids:
+            self.assertIn(f'href="/subasta/{auction_id}"', page)
+        self.assertIn("home-slider.js", page)
 
     def create_lot(self, lot_number, *, featured=False, photos=None, **overrides):
         group_name = overrides.pop("group_name", "Colección")
@@ -330,6 +376,60 @@ class PrivateAreaTest(unittest.TestCase):
             b"Art\xc3\xadculo A-01", self.client.get("/subastas-activas").data
         )
 
+    def test_active_upcoming_and_sold_lots_are_separated(self):
+        self.login()
+        self.create_lot("LIVE-01")
+        upcoming_start = (datetime.now(timezone.utc) + timedelta(hours=25)).astimezone(
+            ZoneInfo("America/Montevideo")
+        )
+        self.create_lot(
+            "FUTURE-01",
+            start_mode="scheduled",
+            starts_at=upcoming_start.strftime("%Y-%m-%dT%H:%M"),
+        )
+        self.create_lot("SOLD-01")
+        self.create_lot("ENDED-01")
+
+        with self.app.app_context():
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            sold = Auction.query.filter_by(lot_number="SOLD-01").one()
+            sold.starts_at = now - timedelta(hours=1)
+            sold.closes_at = now - timedelta(minutes=5)
+            ended_without_bids = Auction.query.filter_by(lot_number="ENDED-01").one()
+            ended_without_bids.starts_at = now - timedelta(hours=2)
+            ended_without_bids.closes_at = now - timedelta(hours=1)
+            bidder = User(
+                username="soldwinner",
+                full_name="Sold Winner",
+                email="soldwinner@example.test",
+                phone="099123456",
+                shipping_address="18 de Julio 1000",
+                city="Montevideo",
+                postal_code="11100",
+            )
+            bidder.set_password("safe-password")
+            db.session.add(bidder)
+            db.session.flush()
+            db.session.add(Bid(amount=Decimal("150"), auction=sold, bidder=bidder))
+            db.session.commit()
+
+        active_page = self.client.get("/subastas-activas").get_data(as_text=True)
+        upcoming_page = self.client.get("/proximas-subastas").get_data(as_text=True)
+
+        self.assertIn("Artículo LIVE-01", active_page)
+        self.assertIn("data-auction-countdown", active_page)
+        self.assertNotIn("Artículo FUTURE-01", active_page)
+        self.assertIn("Artículo SOLD-01", active_page)
+        self.assertIn("SUBASTADO", active_page)
+        self.assertNotIn("Artículo ENDED-01", active_page)
+        self.assertIn("Artículo FUTURE-01", upcoming_page)
+        self.assertNotIn("Artículo LIVE-01", upcoming_page)
+        self.assertNotIn("Artículo SOLD-01", upcoming_page)
+        self.assertEqual(
+            self.client.get("/articulos-en-remate").status_code,
+            200,
+        )
+
     def test_scheduled_auction_can_be_subscribed_to_and_sends_one_email(self):
         self.login()
         start = (datetime.now(timezone.utc) + timedelta(hours=23)).astimezone(
@@ -418,7 +518,7 @@ class PrivateAreaTest(unittest.TestCase):
         with self.client.session_transaction() as session:
             session["user_id"] = user_id
 
-        self.assertIn(b"PR\xc3\x93XIMAMENTE", self.client.get("/subastas-activas").data)
+        self.assertIn(b"PR\xc3\x93XIMAMENTE", self.client.get("/proximas-subastas").data)
         response = self.client.post(
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "150"},
@@ -470,6 +570,95 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b"OFERTA ACTUAL", detail.data)
         self.assertIn(b"$U 150.00", detail.data)
         self.assertIn(b"saltos de $U 50.00", detail.data)
+        self.assertIn(b"data-auction-countdown", detail.data)
+        self.assertIn(b"data-bid-form", detail.data)
+        self.assertIn(b"auction-countdown.js", detail.data)
+
+    def test_outbid_bidder_receives_one_email_with_replacement_offer(self):
+        self.login()
+        self.create_lot("OUTBID-01")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+            bidders = [
+                User(
+                    username=f"outbidder{index}",
+                    full_name=f"Outbidder {index}",
+                    email=f"outbidder{index}@example.test",
+                    phone="099123456",
+                    shipping_address="18 de Julio 1000",
+                    city="Montevideo",
+                    postal_code="11100",
+                )
+                for index in range(2)
+            ]
+            for bidder in bidders:
+                bidder.set_password("safe-password")
+            db.session.add_all(bidders)
+            db.session.commit()
+            bidder_ids = [bidder.id for bidder in bidders]
+
+        with self.client.session_transaction() as session:
+            session["user_id"] = bidder_ids[0]
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "150"},
+        )
+        with self.client.session_transaction() as session:
+            session["user_id"] = bidder_ids[1]
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "200"},
+        )
+
+        with self.app.app_context():
+            notification = AuctionOutbidNotification.query.one()
+            self.assertEqual(notification.outbid_bid.bidder.id, bidder_ids[0])
+            self.assertEqual(notification.replacement_bid.amount, Decimal("200.00"))
+            self.assertIsNone(notification.sent_at)
+
+            with patch("app.auction_reminders.smtplib.SMTP") as smtp_factory:
+                mail_server = smtp_factory.return_value.__enter__.return_value
+                self.assertEqual(send_due_auction_outbid_notifications(), 1)
+                self.assertEqual(send_due_auction_outbid_notifications(), 0)
+                self.assertEqual(mail_server.send_message.call_count, 1)
+                message = mail_server.send_message.call_args.args[0]
+                self.assertEqual(message["To"], "outbidder0@example.test")
+                self.assertIn("Superaron tu oferta", message["Subject"])
+                self.assertIn("$U 150.00", message.get_content())
+                self.assertIn("$U 200.00", message.get_content())
+                self.assertIn(f"/subasta/{auction_id}", message.get_content())
+
+            self.assertIsNotNone(notification.sent_at)
+
+    def test_bidder_does_not_get_outbid_email_for_raising_their_own_bid(self):
+        self.login()
+        self.create_lot("SELF-BID-01")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+            bidder = User(
+                username="selfbidder",
+                full_name="Self Bidder",
+                email="selfbidder@example.test",
+                phone="099123456",
+                shipping_address="18 de Julio 1000",
+                city="Montevideo",
+                postal_code="11100",
+            )
+            bidder.set_password("safe-password")
+            db.session.add(bidder)
+            db.session.commit()
+            bidder_id = bidder.id
+        with self.client.session_transaction() as session:
+            session["user_id"] = bidder_id
+
+        for amount in ("150", "200"):
+            self.client.post(
+                f"/subasta/{auction_id}/ofertar",
+                data={"csrf_token": self.csrf_token(), "amount": amount},
+            )
+
+        with self.app.app_context():
+            self.assertEqual(AuctionOutbidNotification.query.count(), 0)
 
     def test_bid_increment_tiers_follow_current_price_thresholds(self):
         self.assertEqual(minimum_bid_increment(Decimal("500")), Decimal("50"))
@@ -478,6 +667,166 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertEqual(minimum_bid_increment(Decimal("2000.01")), Decimal("500"))
         self.assertEqual(minimum_bid_increment(Decimal("10000")), Decimal("500"))
         self.assertEqual(minimum_bid_increment(Decimal("10000.01")), Decimal("1000"))
+
+    def test_registered_user_can_toggle_favorites_and_see_them_on_home(self):
+        self.login()
+        self.create_lot("FAV-01")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        user_id = self.login_user()
+
+        response = self.client.post(
+            f"/subasta/{auction_id}/favorito",
+            data={
+                "csrf_token": self.csrf_token(),
+                "return_to": "/",
+            },
+            follow_redirects=True,
+        )
+        page = response.get_data(as_text=True)
+        self.assertIn("Tus artículos favoritos", page)
+        self.assertIn("Artículo FAV-01", page)
+        with self.app.app_context():
+            self.assertEqual(
+                AuctionFavorite.query.filter_by(
+                    user_id=user_id, auction_id=auction_id
+                ).count(),
+                1,
+            )
+
+        self.client.post(
+            f"/subasta/{auction_id}/favorito",
+            data={
+                "csrf_token": self.csrf_token(),
+                "return_to": "/",
+            },
+        )
+        with self.app.app_context():
+            self.assertEqual(AuctionFavorite.query.count(), 0)
+
+    def test_home_shows_eight_most_recently_viewed_articles_from_browser_session(self):
+        self.login()
+        for index in range(9):
+            self.create_lot(f"VIEW-{index}")
+        with self.app.app_context():
+            auction_ids = [
+                auction.id
+                for auction in Auction.query.order_by(Auction.id.asc()).all()
+            ]
+
+        for auction_id in auction_ids:
+            self.client.get(f"/subasta/{auction_id}")
+
+        page = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Últimos artículos vistos", page)
+        self.assertNotIn("Artículo VIEW-0", page)
+        for index in range(1, 9):
+            self.assertIn(f"Artículo VIEW-{index}", page)
+
+    def test_successful_bid_shows_same_group_recommendations(self):
+        self.login()
+        self.create_lot("REL-01")
+        self.create_lot("REL-02")
+        self.create_lot("REL-03")
+        self.create_lot("OTHER-01", group_name="Otro grupo")
+        self.create_lot("OTHER-02", group_name="Otro grupo")
+        with self.app.app_context():
+            target = Auction.query.filter_by(lot_number="REL-01").one()
+            target_id = target.id
+        self.login_user()
+
+        response = self.client.post(
+            f"/subasta/{target_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "150"},
+            follow_redirects=True,
+        )
+        page = response.get_data(as_text=True)
+        self.assertIn("Artículos relacionados", page)
+        related_start = page.index(
+            '<section class="mt-5" aria-labelledby="related-auctions-title">'
+        )
+        related_page = page[related_start:]
+        self.assertIn("Artículo REL-02", related_page)
+        self.assertIn("Artículo REL-03", related_page)
+        self.assertIn("Artículo OTHER-01", related_page)
+        self.assertNotIn("Artículo REL-01", related_page)
+
+    def test_closing_reminder_emails_each_bidder_once_inside_30_minute_window(self):
+        now = datetime.now(timezone.utc)
+        with self.app.app_context():
+            group = AuctionGroup(name="Cierre")
+            in_window = Auction(
+                title="Lote con cierre próximo",
+                description="Descripción",
+                lot_number="CLOSE-01",
+                starting_price=Decimal("100"),
+                current_price=Decimal("150"),
+                commission_percent=Decimal("20"),
+                quantity=1,
+                sale_mode="lot",
+                group_name=group.name,
+                sales_group=group,
+                starts_at=(now - timedelta(hours=1)).replace(tzinfo=None),
+                closes_at=(now + timedelta(minutes=27)).replace(tzinfo=None),
+            )
+            outside_window = Auction(
+                title="Lote fuera de ventana",
+                description="Descripción",
+                lot_number="CLOSE-02",
+                starting_price=Decimal("100"),
+                current_price=Decimal("150"),
+                commission_percent=Decimal("20"),
+                quantity=1,
+                sale_mode="lot",
+                group_name=group.name,
+                sales_group=group,
+                starts_at=(now - timedelta(hours=1)).replace(tzinfo=None),
+                closes_at=(now + timedelta(minutes=31)).replace(tzinfo=None),
+            )
+            bidders = [
+                User(username=f"closer{index}", email=f"closer{index}@example.test")
+                for index in range(3)
+            ]
+            for bidder in bidders:
+                bidder.set_password("safe-password")
+            db.session.add_all([in_window, outside_window, *bidders])
+            db.session.flush()
+            db.session.add_all(
+                [
+                    Bid(amount=Decimal("150"), auction=in_window, bidder=bidders[0]),
+                    Bid(amount=Decimal("200"), auction=in_window, bidder=bidders[0]),
+                    Bid(amount=Decimal("150"), auction=in_window, bidder=bidders[1]),
+                    Bid(amount=Decimal("150"), auction=outside_window, bidder=bidders[2]),
+                ]
+            )
+            db.session.commit()
+
+            with patch("app.auction_reminders.smtplib.SMTP") as smtp_factory:
+                mail_server = smtp_factory.return_value.__enter__.return_value
+                self.assertEqual(
+                    send_due_auction_closing_reminders(now=now),
+                    2,
+                )
+                self.assertEqual(
+                    send_due_auction_closing_reminders(now=now),
+                    0,
+                )
+                self.assertEqual(mail_server.send_message.call_count, 2)
+                messages = [
+                    call.args[0]
+                    for call in mail_server.send_message.call_args_list
+                ]
+                self.assertEqual(
+                    {message["To"] for message in messages},
+                    {"closer0@example.test", "closer1@example.test"},
+                )
+                self.assertTrue(
+                    all("Quedan 30 minutos" in message["Subject"] for message in messages)
+                )
+                self.assertTrue(
+                    all("subasta/1" in message.get_content() for message in messages)
+                )
+            self.assertEqual(AuctionClosingReminder.query.count(), 2)
 
     def test_account_shows_wins_and_records_pending_payment_including_commission(self):
         self.login()

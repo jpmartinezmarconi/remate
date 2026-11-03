@@ -109,6 +109,7 @@ def telegram_webhook():
         )
         links = [
             {"label": "Ver subastas", "url": "/subastas-activas"},
+            {"label": "Ver próximas subastas", "url": "/proximas-subastas"},
             {"label": "Abrir Remate Martínez", "url": "/"},
         ]
     elif len(text) > MAX_QUESTION_LENGTH:

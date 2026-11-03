@@ -121,7 +121,7 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         auctions = _public_auctions(upcoming=True)
         if not auctions:
             return "Por el momento no hay subastas próximas publicadas. Revisá nuevamente más adelante.", [
-                {"label": "Ver subastas activas", "url": url_for("auction.active_auctions")}
+                {"label": "Ver próximas subastas", "url": url_for("auction.upcoming_auctions")}
             ]
         visible = auctions[:MAX_AUCTIONS_IN_REPLY]
         reply = "Próximas subastas:\n" + "\n".join(
@@ -130,14 +130,14 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         if len(auctions) > len(visible):
             reply += f"\nHay {len(auctions) - len(visible)} lotes próximos más."
         return reply, [
-            {"label": "Ver subastas activas", "url": url_for("auction.active_auctions")}
+            {"label": "Ver próximas subastas", "url": url_for("auction.upcoming_auctions")}
         ] + [_auction_link(item) for item in visible]
 
     if any(term in normalized_question for term in ("activa", "activas", "activo", "activos", "en curso", "ahora", "actualmente", "disponible", "numero de lote", "subastas")):
         auctions = _public_auctions(upcoming=False)
         if not auctions:
             return "Ahora no hay subastas activas. Podés consultar las que comenzarán próximamente.", [
-                {"label": "Ver subastas", "url": url_for("auction.active_auctions")}
+                {"label": "Ver próximas subastas", "url": url_for("auction.upcoming_auctions")}
             ]
         visible = auctions[:MAX_AUCTIONS_IN_REPLY]
         reply = "Subastas activas:\n" + "\n".join(
@@ -146,7 +146,7 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         if len(auctions) > len(visible):
             reply += f"\nHay {len(auctions) - len(visible)} lotes activos más."
         return reply, [
-            {"label": "Ver todas las subastas", "url": url_for("auction.active_auctions")}
+            {"label": "Ver subastas activas", "url": url_for("auction.active_auctions")}
         ] + [_auction_link(item) for item in visible]
 
     if any(term in normalized_question for term in ("direccion", "donde queda", "donde estan", "retirar", "retiro", "local", "envio", "envios", "costo de envio")):
@@ -172,7 +172,7 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         return (
             "A la oferta ganadora se le suma la comisión indicada en la ficha del lote. "
             "La comisión general es 20%; verificá siempre el porcentaje publicado para cada artículo.",
-            [{"label": "Ver artículos en remate", "url": url_for("auction.active_auctions")}],
+            [{"label": "Ver subastas activas", "url": url_for("auction.active_auctions")}],
         )
 
     if any(term in normalized_question for term in ("comprar", "compro", "pujar", "ofertar", "participar", "como funciona", "como hago")):
@@ -197,7 +197,12 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         return (
             "Si tenés una cuenta y empezaste sesión, podés activar en la ficha de una subasta próxima el aviso por correo. "
             "Te enviaremos un recordatorio 24 horas antes del inicio; si te suscribís más tarde, el próximo ciclo de avisos lo enviará.",
-            [{"label": "Ver próximas subastas", "url": url_for("auction.active_auctions")}],
+            [
+                {
+                    "label": "Ver próximas subastas",
+                    "url": url_for("auction.upcoming_auctions"),
+                }
+            ],
         )
 
     if any(term in normalized_question for term in ("pago", "pagar", "tarjeta", "transferencia", "mercadopago")):

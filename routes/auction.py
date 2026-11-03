@@ -1,13 +1,26 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
-from sqlalchemy import func
+from flask import (
+    Blueprint,
+    abort,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from sqlalchemy import func, or_
+from urllib.parse import urlsplit
 
 from app.database import db
 from models.auction import Auction
+from models.auction_favorite import AuctionFavorite
 from models.bid import Bid
 from models.auction_image import AuctionImage
+from models.auction_outbid_notification import AuctionOutbidNotification
 from models.auction_reminder import AuctionReminder
 from .auth import login_required
 from .security import csrf_protect
@@ -44,6 +57,65 @@ def minimum_bid_increment(current_price: Decimal) -> Decimal:
     return Decimal("1000")
 
 
+def _saved_auction_ids(key: str) -> list[int]:
+    values = session.get(key, [])
+    if not isinstance(values, list):
+        return []
+    return list(dict.fromkeys(value for value in values if isinstance(value, int)))
+
+
+def _favorite_auction_ids(user_id: int | None) -> set[int]:
+    if user_id is None:
+        return set()
+    return {
+        row[0]
+        for row in db.session.query(AuctionFavorite.auction_id)
+        .filter(AuctionFavorite.user_id == user_id)
+        .all()
+    }
+
+
+def _recent_auctions() -> list[Auction]:
+    now = utc_now_naive()
+    auctions_by_id = {
+        auction.id: auction
+        for auction in Auction.query.filter(
+            Auction.id.in_(_saved_auction_ids("recent_auction_ids")),
+            Auction.closes_at > now,
+        ).all()
+    } if session.get("recent_auction_ids") else {}
+    return [
+        auctions_by_id[auction_id]
+        for auction_id in _saved_auction_ids("recent_auction_ids")
+        if auction_id in auctions_by_id
+    ]
+
+
+def _related_auctions(auction: Auction) -> list[Auction]:
+    now = utc_now_naive()
+    same_group = (
+        Auction.query.filter(Auction.id != auction.id, Auction.closes_at > now)
+        .filter(Auction.group_id == auction.group_id)
+        .order_by(Auction.starts_at.asc(), Auction.closes_at.asc())
+        .limit(4)
+        .all()
+    )
+    if len(same_group) == 4:
+        return same_group
+    same_group_ids = [item.id for item in same_group]
+    other_groups = (
+        Auction.query.filter(
+            Auction.id != auction.id,
+            Auction.closes_at > now,
+            Auction.group_id != auction.group_id,
+        )
+        .order_by(Auction.starts_at.asc(), Auction.closes_at.asc())
+        .limit(4 - len(same_group))
+        .all()
+    )
+    return same_group + [item for item in other_groups if item.id not in same_group_ids]
+
+
 @auction_bp.get("/")
 def home():
     now = utc_now_naive()
@@ -55,8 +127,46 @@ def home():
         .order_by(Auction.group_name.asc(), Auction.closes_at.asc())
         .all()
     )
+    hero_auctions = (
+        Auction.query.filter(
+            Auction.closes_at > now,
+            or_(Auction.image_url.isnot(None), Auction.photos.any()),
+        )
+        .order_by(
+            Auction.featured_on_home.desc(),
+            Auction.starts_at.asc(),
+            Auction.closes_at.asc(),
+        )
+        .limit(8)
+        .all()
+    )
+    favorite_auction_ids = _favorite_auction_ids(
+        g.current_user.id if g.current_user else None
+    )
+    favorite_auctions = (
+        Auction.query.join(AuctionFavorite)
+        .filter(
+            AuctionFavorite.user_id == g.current_user.id,
+            Auction.closes_at > now,
+        )
+        .order_by(AuctionFavorite.created_at.desc())
+        .all()
+        if g.current_user
+        else []
+    )
+    recent_auctions = _recent_auctions()
+    card_auctions = list({
+        auction.id: auction
+        for auction in auctions + hero_auctions + favorite_auctions + recent_auctions
+    }.values())
     return render_template(
-        "home.html", auctions=auctions, cover_photos=cover_photo_ids(auctions)
+        "home.html",
+        auctions=auctions,
+        hero_auctions=hero_auctions,
+        cover_photos=cover_photo_ids(card_auctions),
+        favorite_auctions=favorite_auctions,
+        favorite_auction_ids=favorite_auction_ids,
+        recent_auctions=recent_auctions,
     )
 
 
@@ -64,20 +174,70 @@ def home():
 def active_auctions():
     now = utc_now_naive()
     auctions = (
-        Auction.query.filter(Auction.closes_at > now)
-        .order_by(Auction.group_name.asc(), Auction.starts_at.asc(), Auction.closes_at.asc())
+        Auction.query.filter(
+            Auction.starts_at <= now,
+            Auction.closes_at > now,
+        )
+        .order_by(Auction.group_name.asc(), Auction.closes_at.asc())
         .all()
     )
+    sold_auctions = (
+        Auction.query.filter(
+            Auction.closes_at <= now,
+            Auction.bids.any(),
+        )
+        .order_by(Auction.closes_at.desc(), Auction.id.desc())
+        .all()
+    )
+    listed_auctions = auctions + sold_auctions
     return render_template(
         "active_auctions.html",
         auctions=auctions,
+        sold_auctions=sold_auctions,
+        cover_photos=cover_photo_ids(listed_auctions),
+        favorite_auction_ids=_favorite_auction_ids(
+            g.current_user.id if g.current_user else None
+        ),
+    )
+
+
+@auction_bp.get("/proximas-subastas")
+@auction_bp.get("/articulos-en-remate")
+def upcoming_auctions():
+    now = utc_now_naive()
+    auctions = (
+        Auction.query.filter(
+            Auction.starts_at > now,
+            Auction.closes_at > now,
+        )
+        .order_by(Auction.group_name.asc(), Auction.starts_at.asc())
+        .all()
+    )
+    return render_template(
+        "upcoming_auctions.html",
+        auctions=auctions,
         cover_photos=cover_photo_ids(auctions),
+        favorite_auction_ids=_favorite_auction_ids(
+            g.current_user.id if g.current_user else None
+        ),
     )
 
 
 @auction_bp.get("/subasta/<int:auction_id>")
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
+    related_auctions = (
+        _related_auctions(auction)
+        if request.args.get("bid") == "success"
+        else []
+    )
+    if auction.closes_at.replace(tzinfo=None) > utc_now_naive():
+        recent_ids = [
+            item_id
+            for item_id in _saved_auction_ids("recent_auction_ids")
+            if item_id != auction.id
+        ]
+        session["recent_auction_ids"] = (recent_ids + [auction.id])[-8:]
     reminder_subscribed = False
     if g.current_user and auction.is_upcoming:
         reminder_subscribed = (
@@ -91,7 +251,53 @@ def detail(auction_id: int):
         "auction_detail.html",
         auction=auction,
         reminder_subscribed=reminder_subscribed,
+        is_favorite=(
+            AuctionFavorite.query.filter_by(
+                auction_id=auction.id,
+                user_id=g.current_user.id,
+            ).first()
+            is not None
+            if g.current_user
+            else False
+        ),
+        favorite_auction_ids=_favorite_auction_ids(
+            g.current_user.id if g.current_user else None
+        ),
+        related_auctions=related_auctions,
+        cover_photos=cover_photo_ids(related_auctions),
     )
+
+
+@auction_bp.post("/subasta/<int:auction_id>/favorito")
+@login_required
+@csrf_protect
+def toggle_favorite(auction_id: int):
+    auction = db.get_or_404(Auction, auction_id)
+    favorite = AuctionFavorite.query.filter_by(
+        auction_id=auction.id,
+        user_id=g.current_user.id,
+    ).first()
+    if favorite:
+        db.session.delete(favorite)
+        flash("Se quitó el artículo de tus favoritos.", "info")
+    else:
+        db.session.add(
+            AuctionFavorite(auction_id=auction.id, user_id=g.current_user.id)
+        )
+        flash("Se agregó el artículo a tus favoritos.", "success")
+    db.session.commit()
+
+    return_to = request.form.get("return_to", "")
+    parsed_return = urlsplit(return_to)
+    if (
+        return_to.startswith("/")
+        and not return_to.startswith("//")
+        and not parsed_return.netloc
+        and not parsed_return.scheme
+        and "\\" not in return_to
+    ):
+        return redirect(return_to)
+    return redirect(url_for("auction.detail", auction_id=auction.id))
 
 
 @auction_bp.post("/subasta/<int:auction_id>/notificar")
@@ -177,9 +383,24 @@ def place_bid(auction_id: int):
         )
         return redirect(url_for("auction.detail", auction_id=auction.id))
 
+    previous_leading_bid = (
+        Bid.query.filter_by(auction_id=auction.id)
+        .order_by(Bid.amount.desc(), Bid.id.desc())
+        .first()
+    )
     bid = Bid(amount=amount, auction=auction, bidder=g.current_user)
     auction.current_price = amount
     db.session.add(bid)
+    if (
+        previous_leading_bid
+        and previous_leading_bid.user_id != g.current_user.id
+    ):
+        db.session.add(
+            AuctionOutbidNotification(
+                outbid_bid=previous_leading_bid,
+                replacement_bid=bid,
+            )
+        )
     db.session.commit()
     flash("¡Oferta registrada! Ahora sos quien va ganando.", "success")
-    return redirect(url_for("auction.detail", auction_id=auction.id))
+    return redirect(url_for("auction.detail", auction_id=auction.id, bid="success"))

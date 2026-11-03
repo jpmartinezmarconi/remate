@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Próximas subastas · Remate Martínez{% endblock %}
+{% block content %}
+<section class="container auction-layout active-auctions-page">
+  <div class="section-heading">
+    <div><span class="section-kicker">PREPARATE PARA OFERTAR</span><h1>Próximas subastas</h1></div>
+    <span class="auction-count">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }}</span>
+  </div>
+  {% if auctions %}
+    {% from "_auction_card.html" import render_auction_card with context %}
+    {% for group_name, group_auctions in auctions|groupby('group_name') %}
+      <section class="auction-group mb-4" aria-label="Grupo {{ group_name }}">
+        <h2 class="auction-group-title">{{ group_name }}</h2>
+        <div class="row g-3">
+          {% for auction in group_auctions %}
+            <div class="col-sm-6 col-lg-4 col-xl-3">
+              {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state text-center">
+      <span class="empty-mark" aria-hidden="true">◷</span>
+      <h2>No hay subastas próximas</h2>
+      <p>Estamos preparando nuevos lotes. Volvé pronto.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

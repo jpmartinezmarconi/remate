@@ -3,19 +3,18 @@
 {% block content %}
 <section class="container auction-layout active-auctions-page">
   <div class="section-heading">
-    <div><span class="section-kicker">LOTES ACTIVOS Y PRÓXIMOS</span><h1>Subastas activas y próximamente</h1></div>
+    <div><span class="section-kicker">PUJAS EN CURSO</span><h1>Subastas activas</h1></div>
     <span class="auction-count">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }}</span>
   </div>
   {% if auctions %}
-    {% from "_auction_card.html" import render_auction_card %}
+    {% from "_auction_card.html" import render_auction_card with context %}
     {% for group_name, group_auctions in auctions|groupby('group_name') %}
       <section class="auction-group mb-4" aria-label="Grupo {{ group_name }}">
         <h2 class="auction-group-title">{{ group_name }}</h2>
         <div class="row g-3">
           {% for auction in group_auctions %}
             <div class="col-sm-6 col-lg-4 col-xl-3">
-              {{ render_auction_card(auction, cover_photos.get(auction.id)) }}
-              {% if auction.featured_on_home %}<span class="featured-caption">También destacado en la portada</span>{% endif %}
+              {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
             </div>
           {% endfor %}
         </div>
@@ -24,9 +23,27 @@
   {% else %}
     <div class="empty-state text-center">
       <span class="empty-mark" aria-hidden="true">⚒</span>
-      <h2>No hay subastas disponibles</h2>
-      <p>Estamos preparando nuevos lotes. Volvé pronto.</p>
+      <h2>No hay subastas en curso</h2>
+      <p>Podés consultar las subastas que comenzarán próximamente.</p>
+      <a class="btn btn-auction" href="{{ url_for('auction.upcoming_auctions') }}">Ver próximas subastas</a>
     </div>
+  {% endif %}
+  {% if sold_auctions %}
+    <section class="sold-auctions-section mt-5" aria-labelledby="sold-auctions-title">
+      <div class="section-heading">
+        <div><span class="section-kicker">REMATES FINALIZADOS</span><h2 id="sold-auctions-title">Lotes subastados</h2></div>
+        <span class="auction-count">{{ sold_auctions|length }} lote{{ '' if sold_auctions|length == 1 else 's' }}</span>
+      </div>
+      <p class="text-secondary">Estos lotes ya se adjudicaron y se muestran como referencia.</p>
+      {% from "_auction_card.html" import render_auction_card with context %}
+      <div class="row g-3">
+        {% for auction in sold_auctions %}
+          <div class="col-sm-6 col-lg-4 col-xl-3">
+            {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
   {% endif %}
 </section>
 {% endblock %}
