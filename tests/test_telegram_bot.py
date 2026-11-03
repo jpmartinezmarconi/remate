@@ -117,7 +117,7 @@ class TelegramBotTest(unittest.TestCase):
         payload = json.loads(mocked_urlopen.call_args.args[0].data)
         self.assertIn("Av. 8 de Octubre", payload["text"])
         buttons = payload["reply_markup"]["inline_keyboard"]
-        self.assertEqual(buttons[0][0]["url"], "https://wa.me/59896430909")
+        self.assertEqual(buttons[0][0]["url"], "https://wa.me/59896164645")
         self.assertTrue(
             all(
                 button["url"].startswith(("http://", "https://"))

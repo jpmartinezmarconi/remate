@@ -90,7 +90,11 @@ class HelpBotTest(unittest.TestCase):
         self.assertIn("Av. 8 de Octubre 4336/4328", address.json["reply"])
 
         contact = self.ask("¿Cuál es el email y teléfono?")
-        self.assertIn("096 430 909", contact.json["reply"])
+        self.assertIn("096 164 645", contact.json["reply"])
+        self.assertIn(
+            "https://wa.me/59896164645",
+            next(link["url"] for link in contact.json["links"] if link["label"] == "WhatsApp"),
+        )
         self.assertIn("info@rematemartinez.com.uy", contact.json["reply"])
 
         commission = self.ask("¿Qué comisión se cobra?")

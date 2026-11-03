@@ -74,10 +74,10 @@
           ? error.message
           : "No pudimos conectar con el asistente.";
       addMessage(
-        `${message} Podés comunicarte al 096 430 909 o a info@rematemartinez.com.uy.`,
+        `${message} Podés comunicarte al 096 164 645 o a info@rematemartinez.com.uy.`,
         "assistant",
         [
-          { label: "WhatsApp", url: "https://wa.me/59896430909" },
+          { label: "WhatsApp", url: "https://wa.me/59896164645" },
           { label: "Enviar correo", url: "mailto:info@rematemartinez.com.uy" },
         ],
       );

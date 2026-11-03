@@ -11,7 +11,7 @@ from .auction import utc_now_naive
 help_bp = Blueprint("help", __name__, url_prefix="/api/ayuda")
 MAX_QUESTION_LENGTH = 300
 MAX_AUCTIONS_IN_REPLY = 8
-PHONE = "096 430 909"
+PHONE = "096 164 645"
 EMAIL = "info@rematemartinez.com.uy"
 ADDRESS = "Av. 8 de Octubre 4336/4328, Montevideo, Uruguay"
 
@@ -153,8 +153,8 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         return (
             f"Podés retirar tus compras en {ADDRESS}. Para envíos, el costo depende de la ubicación; contactanos al {PHONE} o a {EMAIL} para coordinar.",
             [
-                {"label": "Llamar", "url": "tel:+59896430909"},
-                {"label": "WhatsApp", "url": "https://wa.me/59896430909"},
+                {"label": "Llamar", "url": "tel:+59896164645"},
+                {"label": "WhatsApp", "url": "https://wa.me/59896164645"},
             ],
         )
 
@@ -162,8 +162,8 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         return (
             f"Podés comunicarte por teléfono o WhatsApp al {PHONE}, o escribir a {EMAIL}.",
             [
-                {"label": "Llamar", "url": "tel:+59896430909"},
-                {"label": "WhatsApp", "url": "https://wa.me/59896430909"},
+                {"label": "Llamar", "url": "tel:+59896164645"},
+                {"label": "WhatsApp", "url": "https://wa.me/59896164645"},
                 {"label": "Enviar correo", "url": f"mailto:{EMAIL}"},
             ],
         )
