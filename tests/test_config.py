@@ -8,6 +8,22 @@ from config import _database_url_from_environment
 
 
 class ConfigurationTest(unittest.TestCase):
+    def test_reminder_trigger_secret_uses_environment(self):
+        environment = os.environ.copy()
+        environment["REMINDER_TRIGGER_SECRET"] = "test-reminder-secret"
+        configured_secret = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from config import Config; print(Config.REMINDER_TRIGGER_SECRET)",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+        ).stdout.strip()
+        self.assertEqual(configured_secret, "test-reminder-secret")
+
     def test_local_database_defaults_to_sqlite(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(

@@ -36,7 +36,7 @@ Plataforma web de subastas construida con Flask, SQLAlchemy y PostgreSQL. Incluy
 
 ## Base de datos y migraciones
 
-La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite. En Render configura `DATABASE_URL` con la URL PostgreSQL persistente de Neon, tanto en el servicio web como en el Cron Job. La aplicación ahora se niega a iniciar en Render si falta esta variable o apunta a SQLite: el disco local de Render es efímero y puede perder los lotes al desplegar.
+La conexión a la base de datos se configura mediante `DATABASE_URL` en `.env`. También puedes usar `sqlite:///app.db` para desarrollo local con SQLite. En Render configura `DATABASE_URL` con la URL PostgreSQL persistente de Neon en el servicio web. La aplicación se niega a iniciar en Render si falta esta variable o apunta a SQLite: el disco local de Render es efímero y puede perder los lotes al desplegar.
 
 El esquema de la aplicación está versionado en `MiProyecto/migrations/`. En local, aplica las migraciones:
 
@@ -76,7 +76,19 @@ El script registra la URL segura del webhook y los comandos `/start` y `/help`. 
 
 ## Despliegue en Render
 
-El archivo `MiProyecto/render.yaml` configura el servicio Render que utiliza `MiProyecto` como Root Directory y un Cron Job que revisa recordatorios y avisos de pujas superadas cada cinco minutos. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes y el servicio comprueba `/api/health`. Configura la URL PostgreSQL persistente de Neon como `DATABASE_URL` en el servicio web y en el Cron Job; no uses SQLite en Render. Proporciona además `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Configura `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en el Cron Job. El puerto SMTP predeterminado es 587 (STARTTLS). Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
+Render sirve la aplicación web y Neon almacena la base de datos PostgreSQL. Configura `DATABASE_URL` y `REMINDER_TRIGGER_SECRET` en el servicio web de Render; no uses SQLite en producción. Para los avisos por email, una Neon Function llama al endpoint privado `/api/internal/process-reminders` cada cinco minutos. Configura `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en Render. Render genera `SECRET_KEY` automáticamente. No uses el servidor de desarrollo en producción.
+
+### Programar avisos por email con Neon
+
+Desde `MiProyecto`, instala la CLI de Neon (`npm install -g neon@latest`), inicia sesión con `neon login` y enlaza el proyecto con `neon link`. Crea un secreto aleatorio con `python -c "import secrets; print(secrets.token_urlsafe(32))"` y configura el mismo valor, sin publicarlo, como `REMINDER_TRIGGER_SECRET` en el servicio web de Render. En Render, configura también `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL`.
+
+Con el repositorio actualizado, ejecuta el script una vez desde PowerShell para desplegar la función y registrar el disparador cada cinco minutos (UTC). El script solicita el secreto de forma oculta:
+
+```powershell
+.\deploy_neon_reminders.ps1
+```
+
+No guardes la clave en Git ni la compartas por chat. La ruta rechaza solicitudes sin la clave válida y la función solo acepta invocaciones con el encabezado de Neon.
 
 ## Estructura
 

@@ -20,16 +20,7 @@ services:
         sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
-  - type: cron
-    name: remate-auction-reminders
-    runtime: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python MiProyecto/send_auction_reminders.py"
-    schedule: "*/5 * * * *"
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.9
-      - key: DATABASE_URL
+      - key: REMINDER_TRIGGER_SECRET
         sync: false
       - key: SMTP_HOST
         sync: false

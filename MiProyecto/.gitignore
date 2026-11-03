@@ -12,6 +12,7 @@ ENV/
 .env
 *.db
 instance/
+.neon
 
 # Tooling
 .pytest_cache/

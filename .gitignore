@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.neon.env
 
 # Python
 __pycache__/
