@@ -18,6 +18,7 @@ from flask import (
     url_for,
 )
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from app.database import db
@@ -26,6 +27,7 @@ from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
 from models.auction_payment import AuctionPayment
 from models.bid import Bid
+from models.user import User
 from .security import csrf_protect
 
 
@@ -178,6 +180,24 @@ def dashboard():
             .strftime("%Y-%m-%dT%H:%M")
         ),
     )
+
+
+@private_area_bp.get("/historial-pujas")
+@private_area_required
+def bid_history():
+    bids = (
+        Bid.query.options(joinedload(Bid.auction), joinedload(Bid.bidder))
+        .order_by(Bid.created_at.desc(), Bid.id.desc())
+        .all()
+    )
+    return render_template("private_bid_history.html", bids=bids)
+
+
+@private_area_bp.get("/clientes")
+@private_area_required
+def registered_customers():
+    users = User.query.order_by(User.created_at.desc(), User.id.desc()).all()
+    return render_template("private_customers.html", users=users)
 
 
 @private_area_bp.post("/lotes")

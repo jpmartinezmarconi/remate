@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Historial de pujas · Área privada{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <div class="private-header">
+    <div>
+      <span class="section-kicker">ADMINISTRACIÓN</span>
+      <h1>Historial de pujas</h1>
+      <p>Ofertas y datos de contacto de las personas que participaron en los remates.</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.dashboard') }}">Volver al panel</a>
+  </div>
+  <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Secciones del área privada">
+    <a class="btn btn-auction" href="{{ url_for('private_area.bid_history') }}">Historial de pujas</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.registered_customers') }}">Clientes registrados</a>
+  </nav>
+  <section class="private-panel">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">Ofertas registradas</h2>
+      <span class="auction-count">{{ bids|length }} puja{{ '' if bids|length == 1 else 's' }}</span>
+    </div>
+    {% if bids %}
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr>
+            <th>Fecha</th><th>Lote</th><th>Oferta</th><th>Cliente</th>
+            <th>Correo</th><th>Teléfono</th><th>Dirección</th><th>Ciudad</th><th>Código postal</th>
+          </tr></thead>
+          <tbody>
+            {% for bid in bids %}
+              <tr>
+                <td>{{ bid.created_at.strftime("%d/%m/%Y %H:%M") }} UTC</td>
+                <td><a href="{{ url_for('auction.detail', auction_id=bid.auction.id) }}">Nº {{ bid.auction.display_lot_number }} · {{ bid.auction.title }}</a></td>
+                <td class="text-nowrap">{{ bid.amount|uyu }}{% if bid.auction.sale_mode == "units" %} / unidad{% endif %}</td>
+                <td>{{ bid.bidder.full_name or bid.bidder.username }}</td>
+                <td><a href="mailto:{{ bid.bidder.email }}">{{ bid.bidder.email }}</a></td>
+                <td>{{ bid.bidder.phone or "—" }}</td>
+                <td>{{ bid.bidder.shipping_address or "—" }}</td>
+                <td>{{ bid.bidder.city or "—" }}</td>
+                <td>{{ bid.bidder.postal_code or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Todavía no hay pujas registradas.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

@@ -15,6 +15,7 @@ class User(db.Model):
     city = db.Column(db.String(100), nullable=False, default="")
     postal_code = db.Column(db.String(20), nullable=False, default="")
     password_hash = db.Column(db.String(256), nullable=False)
+    password_reset_requested_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,

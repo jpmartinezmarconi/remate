@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Clientes registrados · Área privada{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <div class="private-header">
+    <div>
+      <span class="section-kicker">ADMINISTRACIÓN</span>
+      <h1>Clientes registrados</h1>
+      <p>Datos de contacto y registro de las cuentas del sitio. Esta información es privada.</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.dashboard') }}">Volver al panel</a>
+  </div>
+  <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Secciones del área privada">
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.bid_history') }}">Historial de pujas</a>
+    <a class="btn btn-auction" href="{{ url_for('private_area.registered_customers') }}">Clientes registrados</a>
+  </nav>
+  <section class="private-panel">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">Cuentas de clientes</h2>
+      <span class="auction-count">{{ users|length }} cliente{{ '' if users|length == 1 else 's' }}</span>
+    </div>
+    {% if users %}
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr>
+            <th>Nombre completo</th><th>Usuario</th><th>Correo electrónico</th>
+            <th>Teléfono</th><th>Dirección</th><th>Ciudad</th><th>Código postal</th><th>Registrado</th>
+          </tr></thead>
+          <tbody>
+            {% for user in users %}
+              <tr>
+                <td>{{ user.full_name or "—" }}</td>
+                <td>{{ user.username }}</td>
+                <td><a href="mailto:{{ user.email }}">{{ user.email }}</a></td>
+                <td>{{ user.phone or "—" }}</td>
+                <td>{{ user.shipping_address or "—" }}</td>
+                <td>{{ user.city or "—" }}</td>
+                <td>{{ user.postal_code or "—" }}</td>
+                <td>{{ user.created_at.strftime("%d/%m/%Y") }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Todavía no hay clientes registrados.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

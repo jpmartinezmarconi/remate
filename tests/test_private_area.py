@@ -175,6 +175,8 @@ class PrivateAreaTest(unittest.TestCase):
     def test_private_panel_requires_password_and_rejects_wrong_password(self):
         response = self.client.get("/area-privada/panel")
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.get("/area-privada/historial-pujas").status_code, 302)
+        self.assertEqual(self.client.get("/area-privada/clientes").status_code, 302)
 
         response = self.client.post(
             "/area-privada",
@@ -186,6 +188,43 @@ class PrivateAreaTest(unittest.TestCase):
         response = self.login()
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.get("/area-privada/panel").status_code, 200)
+
+    def test_private_customer_and_bid_history_show_client_details(self):
+        self.login()
+        self.create_lot("PRIVATE-PII-01")
+        bidder_id = self.login_user()
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            db.session.add(
+                Bid(amount=Decimal("125.50"), auction=auction, user_id=bidder_id)
+            )
+            db.session.commit()
+
+        self.login()
+        bid_history = self.client.get("/area-privada/historial-pujas")
+        self.assertEqual(bid_history.status_code, 200)
+        bid_page = bid_history.get_data(as_text=True)
+        for value in (
+            "PRIVATE-PII-01",
+            "$U 125.50",
+            "Test Member",
+            "member@example.test",
+            "099123456",
+            "18 de Julio 1000",
+            "Montevideo",
+            "11100",
+        ):
+            self.assertIn(value, bid_page)
+        self.assertIn(f"/subasta/{auction_id}", bid_page)
+
+        customers = self.client.get("/area-privada/clientes")
+        self.assertEqual(customers.status_code, 200)
+        customer_page = customers.get_data(as_text=True)
+        self.assertIn("Clientes registrados", customer_page)
+        self.assertIn("member@example.test", customer_page)
+        self.assertIn("Test Member", customer_page)
+        self.assertIn("Código postal", customer_page)
 
     def test_creates_grouped_unit_lot_with_persistent_photo(self):
         self.login()

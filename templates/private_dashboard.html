@@ -9,6 +9,10 @@
       <button class="btn btn-outline-primary" type="submit">Cerrar sesión</button>
     </form>
   </div>
+  <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Secciones del área privada">
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.bid_history') }}">Historial de pujas</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.registered_customers') }}">Clientes registrados</a>
+  </nav>
 
   <section class="private-panel mb-4">
     <h2>Crear un grupo de ventas</h2>
