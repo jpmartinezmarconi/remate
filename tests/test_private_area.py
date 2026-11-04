@@ -430,6 +430,66 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(auction.starts_at, starts_at)
             self.assertEqual(auction.closes_at, closes_at)
 
+    def test_finished_lot_can_be_relaunched_without_losing_previous_bids(self):
+        self.login()
+        self.create_lot("RELIST-01")
+        user_id = self.login_user()
+        with self.app.app_context():
+            previous = Auction.query.one()
+            previous_id = previous.id
+            previous.starts_at = datetime.now(timezone.utc) - timedelta(days=2)
+            previous.closes_at = datetime.now(timezone.utc) - timedelta(days=1)
+            previous.current_price = Decimal("150.00")
+            db.session.add(
+                Bid(amount=Decimal("150.00"), auction=previous, user_id=user_id)
+            )
+            db.session.commit()
+
+        edit_url = f"/area-privada/lotes/{previous_id}/editar"
+        self.assertIn(
+            b"Publicar este art\xc3\xadculo en un nuevo remate",
+            self.client.get(edit_url).data,
+        )
+        starts_at = (datetime.now(timezone.utc) + timedelta(days=1)).astimezone(
+            ZoneInfo("America/Montevideo")
+        )
+        closes_at = starts_at + timedelta(hours=24)
+        response = self.client.post(
+            edit_url,
+            data={
+                "csrf_token": self.csrf_token(),
+                "action": "relaunch",
+                "title": "Artículo relanzado",
+                "description": "Nueva descripción del artículo",
+                "lot_number": "RELIST-02",
+                "group_id": str(self.created_groups["Colección"]),
+                "starting_price": "200",
+                "commission_percent": "20",
+                "quantity": "2",
+                "sale_mode": "lot",
+                "starts_at": starts_at.strftime("%Y-%m-%dT%H:%M"),
+                "closes_at": closes_at.strftime("%Y-%m-%dT%H:%M"),
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se publicó nuevamente", response.get_data(as_text=True))
+
+        with self.app.app_context():
+            previous = db.session.get(Auction, previous_id)
+            relaunch = Auction.query.filter_by(lot_number="RELIST-02").one()
+            self.assertEqual(previous.title, "Artículo RELIST-01")
+            self.assertEqual(previous.bid_count, 1)
+            self.assertEqual(previous.current_price, Decimal("150.00"))
+            self.assertEqual(relaunch.title, "Artículo relanzado")
+            self.assertEqual(relaunch.description, "Nueva descripción del artículo")
+            self.assertEqual(relaunch.starting_price, Decimal("200.00"))
+            self.assertEqual(relaunch.current_price, Decimal("200.00"))
+            self.assertEqual(relaunch.bid_count, 0)
+            self.assertTrue(relaunch.is_upcoming)
+            self.assertEqual(
+                relaunch.closes_at - relaunch.starts_at, timedelta(hours=24)
+            )
+
     def test_duration_is_whole_hours_and_cannot_exceed_seven_days(self):
         self.login()
         invalid = self.create_lot("D-169", duration_hours="169")
@@ -717,6 +777,18 @@ class PrivateAreaTest(unittest.TestCase):
 
         too_low = self.client.post(
             f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "99"},
+            follow_redirects=True,
+        )
+        self.assertIn(
+            "primera oferta no puede ser menor", too_low.get_data(as_text=True)
+        )
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "100"},
+        )
+        too_low = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "149"},
             follow_redirects=True,
         )
@@ -738,6 +810,23 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b"data-auction-countdown", detail.data)
         self.assertIn(b"data-bid-form", detail.data)
         self.assertIn(b"auction-countdown.js", detail.data)
+
+    def test_first_bid_can_exceed_base_by_any_amount(self):
+        self.login()
+        self.create_lot("B-FIRST-01")
+        self.login_user()
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        response = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "123.45"},
+            follow_redirects=True,
+        )
+        self.assertIn("Oferta registrada", response.get_data(as_text=True))
+        with self.app.app_context():
+            auction = db.session.get(Auction, auction_id)
+            self.assertEqual(auction.current_price, Decimal("123.45"))
+            self.assertEqual(auction.bid_count, 1)
 
     def test_outbid_bidder_receives_one_email_with_replacement_offer(self):
         self.login()
@@ -1026,23 +1115,25 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b"$U 540.00", dashboard.data)
 
         payment_page = self.client.get(f"/cuenta/subasta/{auction_id}/pagar")
-        self.assertIn(b"Tarjeta de cr\xc3\xa9dito o d\xc3\xa9bito", payment_page.data)
+        self.assertNotIn(b"Tarjeta de cr\xc3\xa9dito o d\xc3\xa9bito", payment_page.data)
         self.assertIn(b"Transferencia bancaria", payment_page.data)
-        self.assertIn(b"MercadoPago", payment_page.data)
-        self.assertIn(b"no procesa cargos", payment_page.data)
+        self.assertIn(b"001901236", payment_page.data)
+        self.assertIn(b"JUAN MARTINEZ", payment_page.data)
+        self.assertIn(b"9102129", payment_page.data)
+        self.assertIn(b"$U 540.00", payment_page.data)
 
         response = self.client.post(
             f"/cuenta/subasta/{auction_id}/pagar",
             data={
                 "csrf_token": self.csrf_token(),
-                "method": "mercadopago",
+                "method": "brou_transfer",
             },
             follow_redirects=True,
         )
         self.assertIn("pendiente de confirmación", response.get_data(as_text=True))
         with self.app.app_context():
             payment = AuctionPayment.query.one()
-            self.assertEqual(payment.method, "mercadopago")
+            self.assertEqual(payment.method, "brou_transfer")
             self.assertEqual(payment.status, "pending")
             self.assertEqual(payment.amount, Decimal("540.00"))
 

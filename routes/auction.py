@@ -360,28 +360,38 @@ def place_bid(auction_id: int):
         flash("Ingresá un monto válido.", "danger")
         return redirect(url_for("auction.detail", auction_id=auction.id))
 
-    if amount <= Decimal(auction.current_price):
-        flash("Tu oferta no puede ser menor o igual a la oferta actual.", "danger")
-        return redirect(url_for("auction.detail", auction_id=auction.id))
-    current_price = Decimal(auction.current_price)
-    bid_increment = minimum_bid_increment(current_price)
-    amount_above_current = amount - current_price
-    valid_steps = max(
-        1,
-        int(
-            (amount_above_current / bid_increment).to_integral_value(
-                rounding=ROUND_CEILING
+    has_previous_bids = bool(auction.bids)
+    if not has_previous_bids:
+        if amount < Decimal(auction.starting_price):
+            flash(
+                f"La primera oferta no puede ser menor que el precio base "
+                f"de $U {auction.starting_price:,.2f}.",
+                "danger",
             )
-        ),
-    )
-    next_valid_offer = current_price + bid_increment * valid_steps
-    if amount_above_current < bid_increment or amount_above_current % bid_increment:
-        flash(
-            f"La próxima oferta válida es $U {next_valid_offer:,.2f}; "
-            f"las pujas avanzan en saltos de $U {bid_increment:,.2f}.",
-            "danger",
+            return redirect(url_for("auction.detail", auction_id=auction.id))
+    else:
+        if amount <= Decimal(auction.current_price):
+            flash("Tu oferta no puede ser menor o igual a la oferta actual.", "danger")
+            return redirect(url_for("auction.detail", auction_id=auction.id))
+        current_price = Decimal(auction.current_price)
+        bid_increment = minimum_bid_increment(current_price)
+        amount_above_current = amount - current_price
+        valid_steps = max(
+            1,
+            int(
+                (amount_above_current / bid_increment).to_integral_value(
+                    rounding=ROUND_CEILING
+                )
+            ),
         )
-        return redirect(url_for("auction.detail", auction_id=auction.id))
+        next_valid_offer = current_price + bid_increment * valid_steps
+        if amount_above_current < bid_increment or amount_above_current % bid_increment:
+            flash(
+                f"La próxima oferta válida es $U {next_valid_offer:,.2f}; "
+                f"las pujas avanzan en saltos de $U {bid_increment:,.2f}.",
+                "danger",
+            )
+            return redirect(url_for("auction.detail", auction_id=auction.id))
 
     previous_leading_bid = (
         Bid.query.filter_by(auction_id=auction.id)

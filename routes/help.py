@@ -205,10 +205,23 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
             ],
         )
 
-    if any(term in normalized_question for term in ("pago", "pagar", "tarjeta", "transferencia", "mercadopago")):
+    if any(
+        term in normalized_question
+        for term in (
+            "pago",
+            "pagar",
+            "tarjeta",
+            "transferencia",
+            "mercadopago",
+            "brou",
+            "redpagos",
+            "mi dinero",
+        )
+    ):
         return (
-            "Si ganás un lote, desde Mi cuenta podés registrar tarjeta, transferencia bancaria o MercadoPago como método elegido. "
-            "El pago queda pendiente de confirmación: el sitio todavía no procesa cobros.",
+            "Si ganás un lote, desde Mi cuenta podés registrar una transferencia al BROU "
+            "(cuenta Nº 001901236, JUAN MARTINEZ) o a Mi Dinero Red Pagos "
+            "(cuenta Nº 9102129). El pago queda pendiente hasta confirmar su recepción.",
             [
                 {"label": "Ingresar", "url": url_for("auth.login")},
                 {"label": "Contactar por correo", "url": f"mailto:{EMAIL}"},

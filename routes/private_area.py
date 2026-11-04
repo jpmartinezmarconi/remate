@@ -311,6 +311,27 @@ def edit_auction(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
     has_history = bool(_lots_with_history([auction.id]))
     groups = AuctionGroup.query.order_by(AuctionGroup.name.asc()).all()
+    now = datetime.now(timezone.utc)
+    can_relaunch = not auction.is_active and not auction.is_upcoming
+    relaunch_duration_hours = max(
+        1,
+        min(
+            168,
+            int(
+                (
+                    auction.closes_at.replace(tzinfo=None)
+                    - auction.starts_at.replace(tzinfo=None)
+                ).total_seconds()
+                // 3600
+            ),
+        ),
+    )
+    relaunch_starts_at = (now + timedelta(minutes=2)).replace(
+        second=0, microsecond=0
+    )
+    relaunch_closes_at = relaunch_starts_at + timedelta(
+        hours=relaunch_duration_hours
+    )
 
     if request.method == "GET":
         return render_template(
@@ -318,7 +339,126 @@ def edit_auction(auction_id: int):
             auction=auction,
             groups=groups,
             has_history=has_history,
+            can_relaunch=can_relaunch,
+            relaunch_duration_hours=relaunch_duration_hours,
+            relaunch_starts_at=relaunch_starts_at.astimezone(
+                ZoneInfo("America/Montevideo")
+            ).strftime("%Y-%m-%dT%H:%M"),
+            relaunch_closes_at=relaunch_closes_at.astimezone(
+                ZoneInfo("America/Montevideo")
+            ).strftime("%Y-%m-%dT%H:%M"),
         )
+
+    if request.form.get("action") == "relaunch":
+        if not can_relaunch:
+            flash("Solo se pueden relanzar lotes cuyo remate ya finalizó.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        lot_number = request.form.get("lot_number", "").strip()
+        group_id = request.form.get("group_id", "").strip()
+        sale_mode = request.form.get("sale_mode", "")
+        try:
+            starting_price = Decimal(
+                request.form.get("starting_price", "").replace(",", ".")
+            )
+            commission_percent = Decimal(
+                request.form.get("commission_percent", "").replace(",", ".")
+            )
+            quantity = int(request.form.get("quantity", ""))
+            starts_at = datetime.strptime(
+                request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"
+            ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+            closes_at = datetime.strptime(
+                request.form.get("closes_at", ""), "%Y-%m-%dT%H:%M"
+            ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+        except (InvalidOperation, ValueError):
+            flash("Revisá los datos y las fechas del nuevo remate.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        group = db.session.get(AuctionGroup, group_id) if group_id.isdigit() else None
+        if not title or len(title) > 160 or not description:
+            flash("El título y la descripción son obligatorios.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if not lot_number or len(lot_number) > 40:
+            flash("Ingresá un número de lote de hasta 40 caracteres.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if group is None:
+            flash("Seleccioná un grupo de ventas válido.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if sale_mode not in {"lot", "units"}:
+            flash("Seleccioná si se vende como lote o por unidades.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if (
+            not starting_price.is_finite()
+            or starting_price <= 0
+            or starting_price > MAX_PRICE
+        ):
+            flash("El precio base debe ser mayor que cero y no superar $U 9.999.999.999,99.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if (
+            not commission_percent.is_finite()
+            or commission_percent < 0
+            or commission_percent > 100
+        ):
+            flash("La comisión debe estar entre 0% y 100%.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if quantity < 1 or quantity > 2147483647:
+            flash("La cantidad debe ser un número entero positivo válido.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        starts_at_utc = starts_at.astimezone(timezone.utc).replace(tzinfo=None)
+        closes_at_utc = closes_at.astimezone(timezone.utc).replace(tzinfo=None)
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        duration = closes_at_utc - starts_at_utc
+        if starts_at_utc <= now_utc:
+            flash("La fecha de inicio del nuevo remate debe ser futura.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if duration < timedelta(hours=1) or duration > timedelta(hours=168):
+            flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        duplicate_lot = Auction.query.filter(
+            Auction.group_id == group.id,
+            Auction.lot_number == lot_number,
+            Auction.id != auction.id,
+        ).first()
+        if duplicate_lot:
+            flash("Ese número de lote ya existe dentro del grupo seleccionado.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+
+        photos = _uploaded_photos()
+        if photos is None:
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        copied_photos = [
+            AuctionImage(
+                filename=photo.filename,
+                content_type=photo.content_type,
+                data=photo.data,
+            )
+            for photo in auction.photos
+        ]
+        relaunch = Auction(
+            title=title,
+            description=description,
+            lot_number=lot_number,
+            group_name=group.name,
+            sales_group=group,
+            starting_price=starting_price.quantize(Decimal("0.01")),
+            current_price=starting_price.quantize(Decimal("0.01")),
+            commission_percent=commission_percent.quantize(Decimal("0.01")),
+            quantity=quantity,
+            sale_mode=sale_mode,
+            featured_on_home=False,
+            starts_at=starts_at_utc,
+            closes_at=closes_at_utc,
+            photos=copied_photos + photos,
+        )
+        db.session.add(relaunch)
+        db.session.commit()
+        flash(f"El lote {lot_number} se publicó nuevamente en un nuevo remate.", "success")
+        return redirect(url_for("private_area.dashboard"))
 
     title = request.form.get("title", "").strip()
     description = request.form.get("description", "").strip()

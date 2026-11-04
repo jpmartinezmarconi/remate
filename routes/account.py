@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 
 from app.database import db
 from models.auction import Auction
@@ -14,9 +14,8 @@ from .security import csrf_protect
 
 account_bp = Blueprint("account", __name__, url_prefix="/cuenta")
 PAYMENT_METHODS = {
-    "card": "Tarjeta de crédito o débito",
-    "bank_transfer": "Transferencia bancaria",
-    "mercadopago": "MercadoPago",
+    "brou_transfer": "Transferencia bancaria BROU",
+    "mi_dinero": "Mi Dinero / Red Pagos",
 }
 
 
@@ -208,7 +207,4 @@ def pay_for_auction(auction_id: int):
         payment=payment,
         total=_winning_amount(auction),
         payment_methods=PAYMENT_METHODS,
-        bank_transfer_instructions=current_app.config.get(
-            "BANK_TRANSFER_INSTRUCTIONS", ""
-        ),
     )

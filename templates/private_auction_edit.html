@@ -137,6 +137,78 @@
         <a class="btn btn-outline-secondary" href="{{ url_for('private_area.dashboard') }}">Cancelar</a>
       </div>
     </form>
+
+    {% if has_history and can_relaunch %}
+      <hr class="my-4">
+      <div class="mb-3">
+        <h2 class="h4">Publicar este artículo en un nuevo remate</h2>
+        <p class="text-secondary mb-0">Se conservarán las pujas y pagos del remate anterior. La nueva publicación tendrá su propio precio, fecha, cuenta regresiva e historial. Las fotos actuales se copiarán.</p>
+      </div>
+      <form method="post" action="{{ url_for('private_area.edit_auction', auction_id=auction.id) }}" enctype="multipart/form-data" class="row g-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="relaunch">
+        <div class="col-md-8">
+          <label class="form-label" for="relaunch-title">Artículo</label>
+          <input class="form-control" id="relaunch-title" name="title" maxlength="160" value="{{ auction.title }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="relaunch-lot-number">Número de lote o artículo</label>
+          <input class="form-control" id="relaunch-lot-number" name="lot_number" maxlength="40" value="{{ auction.display_lot_number }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="relaunch-group">Grupo de ventas</label>
+          <select class="form-select" id="relaunch-group" name="group_id" required>
+            {% for group in groups %}
+              <option value="{{ group.id }}" {% if group.id == auction.group_id %}selected{% endif %}>{{ group.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="relaunch-starting-price">Precio base (UYU)</label>
+          <input class="form-control" id="relaunch-starting-price" name="starting_price" type="number" min="0.01" max="9999999999.99" step="0.01" value="{{ auction.starting_price }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label" for="relaunch-commission">Comisión (%)</label>
+          <input class="form-control" id="relaunch-commission" name="commission_percent" type="number" min="0" max="100" step="0.01" value="{{ auction.commission_percent }}" required>
+        </div>
+        <div class="col-md-6">
+          <fieldset>
+            <legend class="form-label fs-6">¿Cómo se vende?</legend>
+            <div class="btn-group" role="group" aria-label="Modalidad de venta">
+              <input class="btn-check" id="relaunch-sale-lot" name="sale_mode" type="radio" value="lot" {% if auction.sale_mode == "lot" %}checked{% endif %} required>
+              <label class="btn btn-outline-primary" for="relaunch-sale-lot">Lote completo</label>
+              <input class="btn-check" id="relaunch-sale-units" name="sale_mode" type="radio" value="units" {% if auction.sale_mode == "units" %}checked{% endif %}>
+              <label class="btn btn-outline-primary" for="relaunch-sale-units">Por unidades</label>
+            </div>
+          </fieldset>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="relaunch-quantity">Cantidad de unidades o piezas</label>
+          <input class="form-control" id="relaunch-quantity" name="quantity" type="number" min="1" step="1" value="{{ auction.quantity }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="relaunch-starts-at">Nueva fecha y hora de inicio (Uruguay)</label>
+          <input class="form-control" id="relaunch-starts-at" name="starts_at" type="datetime-local" value="{{ relaunch_starts_at }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="relaunch-closes-at">Nueva fecha y hora de cierre (Uruguay)</label>
+          <input class="form-control" id="relaunch-closes-at" name="closes_at" type="datetime-local" value="{{ relaunch_closes_at }}" required>
+          <div class="form-text">La fecha de inicio debe ser futura y la duración debe quedar entre 1 y 168 horas.</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="relaunch-description">Descripción</label>
+          <textarea class="form-control" id="relaunch-description" name="description" rows="4" required>{{ auction.description }}</textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="relaunch-photos">Agregar fotos a la nueva publicación (opcional)</label>
+          <input class="form-control" id="relaunch-photos" name="photos" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
+          <div class="form-text">Las fotos actuales se copiarán automáticamente; también podés agregar nuevas.</div>
+        </div>
+        <div class="col-12">
+          <button class="btn btn-auction" type="submit">Publicar nuevo remate</button>
+        </div>
+      </form>
+    {% endif %}
   </section>
 </section>
 {% endblock %}

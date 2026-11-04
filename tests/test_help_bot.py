@@ -101,6 +101,11 @@ class HelpBotTest(unittest.TestCase):
         self.assertIn("20%", commission.json["reply"])
         self.assertIn("ficha del lote", commission.json["reply"])
 
+        payment = self.ask("¿Cómo pago por transferencia?")
+        self.assertIn("001901236", payment.json["reply"])
+        self.assertIn("JUAN MARTINEZ", payment.json["reply"])
+        self.assertIn("9102129", payment.json["reply"])
+
         notifications = self.ask("¿Puedo recibir un recordatorio?")
         self.assertIn("24 horas antes", notifications.json["reply"])
 
