@@ -186,14 +186,26 @@
           <label class="form-label" for="relaunch-quantity">Cantidad de unidades o piezas</label>
           <input class="form-control" id="relaunch-quantity" name="quantity" type="number" min="1" step="1" value="{{ auction.quantity }}" required>
         </div>
-        <div class="col-md-6">
-          <label class="form-label" for="relaunch-starts-at">Nueva fecha y hora de inicio (Uruguay)</label>
-          <input class="form-control" id="relaunch-starts-at" name="starts_at" type="datetime-local" value="{{ relaunch_starts_at }}" required>
+        <div class="col-12">
+          <fieldset>
+            <legend class="form-label fs-6">¿Cuándo publicar el nuevo remate?</legend>
+            <div class="btn-group" role="group" aria-label="Inicio del nuevo remate">
+              <input class="btn-check" id="relaunch-start-now" name="start_mode" type="radio" value="now">
+              <label class="btn btn-outline-primary" for="relaunch-start-now">Publicar ahora</label>
+              <input class="btn-check" id="relaunch-start-scheduled" name="start_mode" type="radio" value="scheduled" checked>
+              <label class="btn btn-outline-primary" for="relaunch-start-scheduled">Publicar próximamente</label>
+            </div>
+            <div class="form-text">Si elegís próximamente, el lote aparecerá en la sección “Próximas subastas” hasta la fecha de inicio.</div>
+          </fieldset>
+        </div>
+        <div class="col-md-6" id="relaunch-scheduled-start-field">
+          <label class="form-label" for="relaunch-starts-at">Fecha y hora de inicio (Uruguay)</label>
+          <input class="form-control" id="relaunch-starts-at" name="starts_at" type="datetime-local" min="{{ relaunch_min_start }}" value="{{ relaunch_starts_at }}">
         </div>
         <div class="col-md-6">
-          <label class="form-label" for="relaunch-closes-at">Nueva fecha y hora de cierre (Uruguay)</label>
-          <input class="form-control" id="relaunch-closes-at" name="closes_at" type="datetime-local" value="{{ relaunch_closes_at }}" required>
-          <div class="form-text">La fecha de inicio debe ser futura y la duración debe quedar entre 1 y 168 horas.</div>
+          <label class="form-label" for="relaunch-duration">Duración del nuevo remate (horas)</label>
+          <input class="form-control" id="relaunch-duration" name="duration_hours" type="number" min="1" max="168" step="1" value="{{ relaunch_duration_hours }}" required>
+          <div class="form-text">El cierre se calculará automáticamente; duración entre 1 y 168 horas.</div>
         </div>
         <div class="col-12">
           <label class="form-label" for="relaunch-description">Descripción</label>
@@ -211,4 +223,22 @@
     {% endif %}
   </section>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+  const relaunchStartNow = document.getElementById("relaunch-start-now");
+  const relaunchStartScheduled = document.getElementById("relaunch-start-scheduled");
+  const relaunchScheduledStartField = document.getElementById("relaunch-scheduled-start-field");
+  const relaunchStartsAt = document.getElementById("relaunch-starts-at");
+  if (relaunchStartNow && relaunchStartScheduled) {
+    const updateRelaunchStartMode = () => {
+      const scheduled = relaunchStartScheduled.checked;
+      relaunchScheduledStartField.hidden = !scheduled;
+      relaunchStartsAt.required = scheduled;
+    };
+    relaunchStartNow.addEventListener("change", updateRelaunchStartMode);
+    relaunchStartScheduled.addEventListener("change", updateRelaunchStartMode);
+    updateRelaunchStartMode();
+  }
+</script>
 {% endblock %}

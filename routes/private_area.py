@@ -329,10 +329,6 @@ def edit_auction(auction_id: int):
     relaunch_starts_at = (now + timedelta(minutes=2)).replace(
         second=0, microsecond=0
     )
-    relaunch_closes_at = relaunch_starts_at + timedelta(
-        hours=relaunch_duration_hours
-    )
-
     if request.method == "GET":
         return render_template(
             "private_auction_edit.html",
@@ -344,9 +340,9 @@ def edit_auction(auction_id: int):
             relaunch_starts_at=relaunch_starts_at.astimezone(
                 ZoneInfo("America/Montevideo")
             ).strftime("%Y-%m-%dT%H:%M"),
-            relaunch_closes_at=relaunch_closes_at.astimezone(
-                ZoneInfo("America/Montevideo")
-            ).strftime("%Y-%m-%dT%H:%M"),
+            relaunch_min_start=(now + timedelta(minutes=1))
+            .astimezone(ZoneInfo("America/Montevideo"))
+            .strftime("%Y-%m-%dT%H:%M"),
         )
 
     if request.form.get("action") == "relaunch":
@@ -359,6 +355,7 @@ def edit_auction(auction_id: int):
         lot_number = request.form.get("lot_number", "").strip()
         group_id = request.form.get("group_id", "").strip()
         sale_mode = request.form.get("sale_mode", "")
+        start_mode = request.form.get("start_mode", "")
         try:
             starting_price = Decimal(
                 request.form.get("starting_price", "").replace(",", ".")
@@ -367,14 +364,9 @@ def edit_auction(auction_id: int):
                 request.form.get("commission_percent", "").replace(",", ".")
             )
             quantity = int(request.form.get("quantity", ""))
-            starts_at = datetime.strptime(
-                request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"
-            ).replace(tzinfo=ZoneInfo("America/Montevideo"))
-            closes_at = datetime.strptime(
-                request.form.get("closes_at", ""), "%Y-%m-%dT%H:%M"
-            ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+            duration_hours = int(request.form.get("duration_hours", ""))
         except (InvalidOperation, ValueError):
-            flash("Revisá los datos y las fechas del nuevo remate.", "danger")
+            flash("Revisá los datos y la duración del nuevo remate.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
         group = db.session.get(AuctionGroup, group_id) if group_id.isdigit() else None
@@ -408,16 +400,28 @@ def edit_auction(auction_id: int):
             flash("La cantidad debe ser un número entero positivo válido.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
-        starts_at_utc = starts_at.astimezone(timezone.utc).replace(tzinfo=None)
-        closes_at_utc = closes_at.astimezone(timezone.utc).replace(tzinfo=None)
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        duration = closes_at_utc - starts_at_utc
-        if starts_at_utc <= now_utc:
-            flash("La fecha de inicio del nuevo remate debe ser futura.", "danger")
-            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
-        if duration < timedelta(hours=1) or duration > timedelta(hours=168):
+        if duration_hours < 1 or duration_hours > 168:
             flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        if start_mode == "now":
+            starts_at_utc = now_utc
+        elif start_mode == "scheduled":
+            try:
+                starts_at = datetime.strptime(
+                    request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"
+                ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+            except ValueError:
+                flash("Ingresá una fecha y hora de inicio válidas.", "danger")
+                return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+            starts_at_utc = starts_at.astimezone(timezone.utc).replace(tzinfo=None)
+            if starts_at_utc <= now_utc:
+                flash("La fecha programada debe ser futura.", "danger")
+                return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        else:
+            flash("Indicá si el nuevo remate comienza ahora o próximamente.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        closes_at_utc = starts_at_utc + timedelta(hours=duration_hours)
 
         duplicate_lot = Auction.query.filter(
             Auction.group_id == group.id,

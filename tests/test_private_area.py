@@ -450,10 +450,10 @@ class PrivateAreaTest(unittest.TestCase):
             b"Publicar este art\xc3\xadculo en un nuevo remate",
             self.client.get(edit_url).data,
         )
+        self.assertIn(b"Publicar pr\xc3\xb3ximamente", self.client.get(edit_url).data)
         starts_at = (datetime.now(timezone.utc) + timedelta(days=1)).astimezone(
             ZoneInfo("America/Montevideo")
         )
-        closes_at = starts_at + timedelta(hours=24)
         response = self.client.post(
             edit_url,
             data={
@@ -467,8 +467,9 @@ class PrivateAreaTest(unittest.TestCase):
                 "commission_percent": "20",
                 "quantity": "2",
                 "sale_mode": "lot",
+                "start_mode": "scheduled",
                 "starts_at": starts_at.strftime("%Y-%m-%dT%H:%M"),
-                "closes_at": closes_at.strftime("%Y-%m-%dT%H:%M"),
+                "duration_hours": "24",
             },
             follow_redirects=True,
         )
@@ -486,6 +487,47 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(relaunch.current_price, Decimal("200.00"))
             self.assertEqual(relaunch.bid_count, 0)
             self.assertTrue(relaunch.is_upcoming)
+            self.assertEqual(
+                relaunch.closes_at - relaunch.starts_at, timedelta(hours=24)
+            )
+
+    def test_finished_lot_can_be_relaunched_immediately(self):
+        self.login()
+        self.create_lot("RELIST-NOW-01")
+        user_id = self.login_user()
+        with self.app.app_context():
+            previous = Auction.query.one()
+            previous_id = previous.id
+            previous.starts_at = datetime.now(timezone.utc) - timedelta(days=2)
+            previous.closes_at = datetime.now(timezone.utc) - timedelta(days=1)
+            db.session.add(
+                Bid(amount=Decimal("150.00"), auction=previous, user_id=user_id)
+            )
+            db.session.commit()
+
+        response = self.client.post(
+            f"/area-privada/lotes/{previous_id}/editar",
+            data={
+                "csrf_token": self.csrf_token(),
+                "action": "relaunch",
+                "title": "Artículo disponible ahora",
+                "description": "Descripción del artículo",
+                "lot_number": "RELIST-NOW-02",
+                "group_id": str(self.created_groups["Colección"]),
+                "starting_price": "200",
+                "commission_percent": "20",
+                "quantity": "1",
+                "sale_mode": "lot",
+                "start_mode": "now",
+                "duration_hours": "24",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se publicó nuevamente", response.get_data(as_text=True))
+        with self.app.app_context():
+            relaunch = Auction.query.filter_by(lot_number="RELIST-NOW-02").one()
+            self.assertTrue(relaunch.is_active)
+            self.assertFalse(relaunch.is_upcoming)
             self.assertEqual(
                 relaunch.closes_at - relaunch.starts_at, timedelta(hours=24)
             )
