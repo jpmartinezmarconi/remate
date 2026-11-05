@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
+import smtplib
 
 from flask import (
     Blueprint,
     abort,
+    current_app,
     flash,
     g,
     redirect,
@@ -16,6 +18,7 @@ from sqlalchemy import func, or_
 from urllib.parse import urlsplit
 
 from app.database import db
+from app.email_notifications import send_business_notification
 from models.auction import Auction
 from models.auction_favorite import AuctionFavorite
 from models.bid import Bid
@@ -412,5 +415,18 @@ def place_bid(auction_id: int):
             )
         )
     db.session.commit()
+    try:
+        send_business_notification(
+            "Nueva puja recibida · Remate Martínez",
+            f"Se recibió una nueva puja.\n\n"
+            f"Lote: {auction.display_lot_number} · {auction.title}\n"
+            f"Participante: {g.current_user.full_name or g.current_user.username}\n"
+            f"Correo: {g.current_user.email}\n"
+            f"Oferta: $U {amount:,.2f}\n",
+        )
+    except (OSError, RuntimeError, smtplib.SMTPException, ValueError):
+        current_app.logger.exception(
+            "Could not send the new-bid notification for auction %s.", auction.id
+        )
     flash("¡Oferta registrada! Ahora sos quien va ganando.", "success")
     return redirect(url_for("auction.detail", auction_id=auction.id, bid="success"))

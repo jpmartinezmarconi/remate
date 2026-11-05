@@ -3,6 +3,7 @@ import hmac
 from flask import Blueprint, current_app, jsonify, request
 
 from app.auction_reminders import (
+    send_due_auction_completion_notifications,
     send_due_auction_closing_reminders,
     send_due_auction_outbid_notifications,
     send_due_auction_reminders,
@@ -34,5 +35,8 @@ def process_auction_reminders():
         "auction_reminders": send_due_auction_reminders(),
         "closing_reminders": send_due_auction_closing_reminders(),
         "outbid_notifications": send_due_auction_outbid_notifications(),
+        "auction_completion_notifications": (
+            send_due_auction_completion_notifications()
+        ),
     }
     return jsonify(ok=True, sent=counts)

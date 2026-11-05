@@ -43,12 +43,14 @@ class ScheduledRemindersTest(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
 
     @patch("app.routes.send_due_auction_outbid_notifications", return_value=3)
+    @patch("app.routes.send_due_auction_completion_notifications", return_value=4)
     @patch("app.routes.send_due_auction_closing_reminders", return_value=2)
     @patch("app.routes.send_due_auction_reminders", return_value=1)
     def test_authorized_request_runs_all_reminder_jobs(
         self,
         send_reminders,
         send_closing_reminders,
+        send_completion_notifications,
         send_outbid_notifications,
     ):
         response = self.client.post(
@@ -64,12 +66,14 @@ class ScheduledRemindersTest(unittest.TestCase):
                     "auction_reminders": 1,
                     "closing_reminders": 2,
                     "outbid_notifications": 3,
+                    "auction_completion_notifications": 4,
                 },
             },
         )
         send_reminders.assert_called_once_with()
         send_closing_reminders.assert_called_once_with()
         send_outbid_notifications.assert_called_once_with()
+        send_completion_notifications.assert_called_once_with()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import re
 import unicodedata
 
-from flask import Blueprint, jsonify, request, url_for
+from flask import Blueprint, current_app, jsonify, request, url_for
 
 from app.database import db
 from models.auction import Auction
@@ -12,7 +12,6 @@ help_bp = Blueprint("help", __name__, url_prefix="/api/ayuda")
 MAX_QUESTION_LENGTH = 300
 MAX_AUCTIONS_IN_REPLY = 8
 PHONE = "096 164 645"
-EMAIL = "info@rematemartinez.com.uy"
 ADDRESS = "Av. 8 de Octubre 4336/4328, Montevideo, Uruguay"
 
 
@@ -102,6 +101,7 @@ def _find_auction(question: str) -> Auction | None:
 
 def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
     normalized_question = _normalize(question)
+    email = current_app.config.get("CONTACT_EMAIL", "remateonline@yahoo.com")
     auction = _find_auction(question)
     if auction:
         now = utc_now_naive()
@@ -151,7 +151,7 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
 
     if any(term in normalized_question for term in ("direccion", "donde queda", "donde estan", "retirar", "retiro", "local", "envio", "envios", "costo de envio")):
         return (
-            f"Podés retirar tus compras en {ADDRESS}. Para envíos, el costo depende de la ubicación; contactanos al {PHONE} o a {EMAIL} para coordinar.",
+            f"Podés retirar tus compras en {ADDRESS}. Para envíos, el costo depende de la ubicación; contactanos al {PHONE} o a {email} para coordinar.",
             [
                 {"label": "Llamar", "url": "tel:+59896164645"},
                 {"label": "WhatsApp", "url": "https://wa.me/59896164645"},
@@ -160,11 +160,11 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
 
     if any(term in normalized_question for term in ("telefono", "llamar", "contactar", "contacto", "mail", "correo", "email", "escribir")):
         return (
-            f"Podés comunicarte por teléfono o WhatsApp al {PHONE}, o escribir a {EMAIL}.",
+            f"Podés comunicarte por teléfono o WhatsApp al {PHONE}, o escribir a {email}.",
             [
                 {"label": "Llamar", "url": "tel:+59896164645"},
                 {"label": "WhatsApp", "url": "https://wa.me/59896164645"},
-                {"label": "Enviar correo", "url": f"mailto:{EMAIL}"},
+                {"label": "Enviar correo", "url": f"mailto:{email}"},
             ],
         )
 
@@ -224,14 +224,14 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
             "(cuenta Nº 9102129). El pago queda pendiente hasta confirmar su recepción.",
             [
                 {"label": "Ingresar", "url": url_for("auth.login")},
-                {"label": "Contactar por correo", "url": f"mailto:{EMAIL}"},
+                {"label": "Contactar por correo", "url": f"mailto:{email}"},
             ],
         )
 
     return (
         "Puedo ayudarte con subastas activas o próximas, números de lote, horarios, comisión, formas de participar, pagos, dirección y contacto. "
         "Probá con una pregunta más concreta o escribinos al correo.",
-        [{"label": "Enviar correo", "url": f"mailto:{EMAIL}"}],
+        [{"label": "Enviar correo", "url": f"mailto:{email}"}],
     )
 
 

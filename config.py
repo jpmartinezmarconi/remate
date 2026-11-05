@@ -41,14 +41,15 @@ def _database_url_from_environment():
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me")
+    CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "remateonline@yahoo.com")
     PRIVATE_AREA_PASSWORD = os.getenv("PASSWORD_AREA_PRIVADA") or os.getenv(
         "PRIVATE_AREA_PASSWORD"
     )
-    SMTP_HOST = os.getenv("SMTP_HOST")
+    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.mail.yahoo.com")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME", CONTACT_EMAIL)
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL")
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", CONTACT_EMAIL)
     PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL")
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET")

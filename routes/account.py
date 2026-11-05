@@ -1,9 +1,21 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+import smtplib
 
-from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
 from app.database import db
+from app.email_notifications import send_business_notification
 from models.auction import Auction
 from models.auction_payment import AuctionPayment
 from models.bid import Bid
@@ -175,6 +187,7 @@ def pay_for_auction(auction_id: int):
 
     payment = AuctionPayment.query.filter_by(auction_id=auction.id).first()
     if request.method == "POST":
+        is_new_payment = payment is None
         method = request.form.get("method", "")
         if method not in PAYMENT_METHODS:
             flash("Seleccioná un método de pago válido.", "danger")
@@ -195,6 +208,23 @@ def pay_for_auction(auction_id: int):
             payment.status = "pending"
             payment.updated_at = datetime.now(timezone.utc)
         db.session.commit()
+        if is_new_payment:
+            try:
+                send_business_notification(
+                    "Nueva compra registrada · Remate Martínez",
+                    f"El ganador registró un método de pago; queda pendiente de "
+                    f"confirmación.\n\n"
+                    f"Lote: {auction.display_lot_number} · {auction.title}\n"
+                    f"Comprador: {g.current_user.full_name or g.current_user.username}\n"
+                    f"Correo: {g.current_user.email}\n"
+                    f"Método de pago: {PAYMENT_METHODS[method]}\n"
+                    f"Total: $U {total:,.2f}\n",
+                )
+            except (OSError, RuntimeError, smtplib.SMTPException, ValueError):
+                current_app.logger.exception(
+                    "Could not send the purchase notification for auction %s.",
+                    auction.id,
+                )
         flash(
             "Registramos tu método de pago. El pago todavía está pendiente de confirmación.",
             "success",

@@ -95,7 +95,8 @@ class HelpBotTest(unittest.TestCase):
             "https://wa.me/59896164645",
             next(link["url"] for link in contact.json["links"] if link["label"] == "WhatsApp"),
         )
-        self.assertIn("info@rematemartinez.com.uy", contact.json["reply"])
+        self.assertIn("remateonline@yahoo.com", contact.json["reply"])
+        self.assertNotIn("info@rematemartinez.com.uy", contact.json["reply"])
 
         commission = self.ask("¿Qué comisión se cobra?")
         self.assertIn("20%", commission.json["reply"])
@@ -124,6 +125,8 @@ class HelpBotTest(unittest.TestCase):
         self.assertIn(b"help-bot.js", page.data)
         self.assertIn(b"data-help-question=", page.data)
         self.assertIn(b">Comisi", page.data)
+        self.assertIn(b"mailto:remateonline@yahoo.com", page.data)
+        self.assertNotIn(b"info@rematemartinez.com.uy", page.data)
 
 
 if __name__ == "__main__":

@@ -20,15 +20,17 @@ services:
         sync: false
       - key: REMINDER_TRIGGER_SECRET
         sync: false
+      - key: CONTACT_EMAIL
+        value: remateonline@yahoo.com
       - key: SMTP_HOST
-        sync: false
+        value: smtp.mail.yahoo.com
       - key: SMTP_PORT
         value: "587"
       - key: SMTP_USERNAME
-        sync: false
+        value: remateonline@yahoo.com
       - key: SMTP_PASSWORD
         sync: false
       - key: SMTP_FROM_EMAIL
-        sync: false
+        value: remateonline@yahoo.com
       - key: PUBLIC_BASE_URL
         sync: false

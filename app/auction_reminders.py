@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from html import escape
 from urllib.parse import urljoin, urlsplit
 import smtplib
 import ssl
@@ -9,7 +10,9 @@ from flask import current_app, url_for
 from app.database import db
 from models.auction import Auction
 from models.auction_closing_reminder import AuctionClosingReminder
+from models.auction_completion_notification import AuctionCompletionNotification
 from models.auction_outbid_notification import AuctionOutbidNotification
+from models.auction_payment import AuctionPayment
 from models.auction_reminder import AuctionReminder
 from models.bid import Bid
 from models.user import User
@@ -182,6 +185,156 @@ def send_due_auction_closing_reminders(now: datetime | None = None) -> int:
             sent_count += 1
 
     current_app.logger.info("Sent %s auction closing email reminders.", sent_count)
+    return sent_count
+
+
+def send_due_auction_completion_notifications(
+    now: datetime | None = None,
+) -> int:
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("The notification dispatch time must include a timezone.")
+    now = now.astimezone(timezone.utc)
+    auctions = (
+        Auction.query.filter(
+            Auction.starts_at <= now,
+            Auction.closes_at <= now,
+            ~Auction.id.in_(
+                db.session.query(AuctionCompletionNotification.auction_id)
+            ),
+        )
+        .order_by(Auction.closes_at.asc(), Auction.id.asc())
+        .all()
+    )
+    if not auctions:
+        current_app.logger.info("No auction completion email notifications are due.")
+        return 0
+
+    host, port, username, password, sender, base_url = _mail_configuration()
+    recipient = current_app.config.get("CONTACT_EMAIL", "remateonline@yahoo.com")
+    if not recipient or "@" not in recipient:
+        raise RuntimeError("CONTACT_EMAIL must be a valid email address.")
+
+    sent_count = 0
+    with smtplib.SMTP(host, port, timeout=30) as mail_server:
+        mail_server.starttls(context=ssl.create_default_context())
+        mail_server.login(username, password)
+
+        for candidate in auctions:
+            auction = (
+                db.session.execute(
+                    db.select(Auction)
+                    .where(Auction.id == candidate.id)
+                    .with_for_update()
+                )
+                .scalar_one_or_none()
+            )
+            if auction is None or AuctionCompletionNotification.query.filter_by(
+                auction_id=candidate.id
+            ).first():
+                db.session.rollback()
+                continue
+
+            winner_bid = (
+                Bid.query.filter_by(auction_id=auction.id)
+                .order_by(Bid.amount.desc(), Bid.created_at.asc(), Bid.id.asc())
+                .first()
+            )
+            auction_url = _auction_url(base_url, auction.id)
+            closed_at = auction.closes_at_montevideo.strftime("%d/%m/%Y a las %H:%M")
+            message = EmailMessage()
+            message["From"] = sender
+            message["To"] = recipient
+
+            if winner_bid is None:
+                status = "Sin ofertas"
+                subject = f"Subasta finalizada sin ofertas · {auction.title}"
+                summary = "Esta subasta finalizó sin ofertas; podés evaluar republicar el lote."
+                details = "<p>No se recibieron ofertas durante esta subasta.</p>"
+            else:
+                winner = winner_bid.bidder
+                payment = AuctionPayment.query.filter_by(
+                    auction_id=auction.id
+                ).first()
+                status = "Con ganador"
+                subject = f"Subasta finalizada con ganador · {auction.title}"
+                if payment is None:
+                    payment_summary = "El ganador todavía no registró un método de pago."
+                    payment_details = "Sin método de pago registrado"
+                else:
+                    payment_summary = (
+                        f"Método de pago: {payment.method.replace('_', ' ')} "
+                        f"({payment.status})"
+                    )
+                    payment_details = (
+                        f"{payment.method.replace('_', ' ').title()} · "
+                        f"{payment.status.title()} · $U {payment.amount:,.2f}"
+                    )
+                summary = (
+                    "La subasta finalizó con un ganador. Revisá sus datos para "
+                    "coordinar el envío o la entrega."
+                )
+                details = (
+                    "<p><strong>Ganador:</strong> "
+                    f"{escape(winner.full_name or winner.username)}</p>"
+                    f"<p><strong>Correo:</strong> {escape(winner.email)}</p>"
+                    f"<p><strong>Teléfono:</strong> {escape(winner.phone or 'No informado')}</p>"
+                    f"<p><strong>Oferta ganadora:</strong> $U {winner_bid.amount:,.2f}</p>"
+                    f"<p><strong>Pago:</strong> {escape(payment_details)}</p>"
+                )
+
+            message["Subject"] = subject
+            message.set_content(
+                f"Subasta finalizada: {auction.title}\n"
+                f"Estado: {status}\n"
+                f"Lote: {auction.display_lot_number}\n"
+                f"Cierre: {closed_at} (hora de Uruguay)\n\n"
+                f"{summary}\n"
+                + (
+                    f"Ganador: {winner_bid.bidder.full_name or winner_bid.bidder.username}\n"
+                    f"Correo: {winner_bid.bidder.email}\n"
+                    f"Teléfono: {winner_bid.bidder.phone or 'No informado'}\n"
+                    f"Oferta ganadora: $U {winner_bid.amount:,.2f}\n"
+                    f"{payment_summary}\n"
+                    if winner_bid is not None
+                    else ""
+                )
+                + f"\nVer lote: {auction_url}\n\nRemate Martínez"
+            )
+            message.add_alternative(
+                "<!doctype html><html lang=\"es\"><body style=\"margin:0;"
+                "padding:24px;background:#f2f5f8;font-family:Arial,sans-serif;"
+                "color:#1f2937\"><main style=\"max-width:600px;margin:auto;"
+                "padding:28px;background:#fff;border-radius:12px\">"
+                "<p style=\"margin:0 0 8px;color:#64748b\">REMATE MARTÍNEZ</p>"
+                "<h1 style=\"margin:0 0 16px;font-size:24px\">Subasta finalizada</h1>"
+                f"<p style=\"display:inline-block;padding:7px 12px;border-radius:20px;"
+                f"background:#e8f1fb;color:#064584\"><strong>{escape(status)}</strong></p>"
+                f"<h2 style=\"font-size:20px\">{escape(auction.title)}</h2>"
+                f"<p><strong>Lote:</strong> {escape(auction.display_lot_number)}<br>"
+                f"<strong>Cierre:</strong> {escape(closed_at)} (hora de Uruguay)</p>"
+                f"<p>{escape(summary)}</p>{details}"
+                f"<p style=\"margin:24px 0\"><a href=\"{escape(auction_url, quote=True)}\" "
+                "style=\"display:inline-block;padding:12px 18px;background:#064584;"
+                "color:white;text-decoration:none;border-radius:6px\">Ver lote</a></p>"
+                "<hr style=\"border:0;border-top:1px solid #e5e7eb\">"
+                "<p style=\"margin-bottom:0;color:#64748b\">Aviso automático · "
+                "Remate Martínez</p></main></body></html>",
+                subtype="html",
+            )
+            mail_server.send_message(message)
+            db.session.add(
+                AuctionCompletionNotification(
+                    auction_id=auction.id,
+                    sent_at=now,
+                )
+            )
+            db.session.commit()
+            sent_count += 1
+
+    current_app.logger.info(
+        "Sent %s auction completion email notifications.", sent_count
+    )
     return sent_count
 
 

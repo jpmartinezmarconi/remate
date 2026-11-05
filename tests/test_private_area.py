@@ -41,6 +41,16 @@ class PrivateAreaConfig:
 
 class PrivateAreaTest(unittest.TestCase):
     def setUp(self):
+        self.bid_notification_patcher = patch(
+            "routes.auction.send_business_notification"
+        )
+        self.bid_notification = self.bid_notification_patcher.start()
+        self.purchase_notification_patcher = patch(
+            "routes.account.send_business_notification"
+        )
+        self.purchase_notification = self.purchase_notification_patcher.start()
+        self.addCleanup(self.bid_notification_patcher.stop)
+        self.addCleanup(self.purchase_notification_patcher.stop)
         self.app = create_app(PrivateAreaConfig)
         self.client = self.app.test_client()
         with self.app.app_context():
@@ -884,6 +894,8 @@ class PrivateAreaTest(unittest.TestCase):
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "150"},
         )
+        self.assertEqual(self.bid_notification.call_count, 2)
+        self.assertIn("Oferta: $U 150.00", self.bid_notification.call_args.args[1])
         detail = self.client.get(f"/subasta/{auction_id}")
         self.assertIn(b"OFERTA ACTUAL", detail.data)
         self.assertIn(b"$U 150.00", detail.data)
@@ -891,6 +903,24 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b"data-auction-countdown", detail.data)
         self.assertIn(b"data-bid-form", detail.data)
         self.assertIn(b"auction-countdown.js", detail.data)
+
+    def test_bid_succeeds_when_business_notification_fails(self):
+        self.login()
+        self.create_lot("MAIL-01")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        self.login_user()
+        self.bid_notification.side_effect = RuntimeError("SMTP is unavailable")
+
+        response = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "100"},
+            follow_redirects=True,
+        )
+
+        self.assertIn("¡Oferta registrada!", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Bid.query.count(), 1)
 
     def test_first_bid_can_exceed_base_by_any_amount(self):
         self.login()
@@ -1217,6 +1247,10 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(payment.method, "brou_transfer")
             self.assertEqual(payment.status, "pending")
             self.assertEqual(payment.amount, Decimal("540.00"))
+        self.purchase_notification.assert_called_once()
+        self.assertIn(
+            "Total: $U 540.00", self.purchase_notification.call_args.args[1]
+        )
 
     def test_profile_is_required_to_bid_and_can_be_completed_from_account(self):
         self.login()

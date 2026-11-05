@@ -48,7 +48,7 @@ El bot `@rematemartinezbot` comparte esas respuestas mediante el webhook HTTPS `
 1. Selecciona el repositorio `jpmartinezmarconi/remate`.
 2. Configura **Root Directory** como `MiProyecto`.
 3. Usa `pip install -r requirements.txt` para compilar y `gunicorn wsgi:app` para iniciar.
-4. Configura `DATABASE_URL`, `REMINDER_TRIGGER_SECRET`, `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Para enviar recordatorios y avisos de pujas superadas, configura `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `PUBLIC_BASE_URL` en ese mismo servicio. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes. La Neon Function y su disparador se despliegan con `deploy_neon_reminders.ps1`.
+4. Configura `DATABASE_URL`, `REMINDER_TRIGGER_SECRET`, `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Para los avisos de correo, usa Yahoo SMTP (`smtp.mail.yahoo.com`, puerto `587`), `SMTP_USERNAME` y `SMTP_FROM_EMAIL` con `remateonline@yahoo.com`, configura `SMTP_PASSWORD` con una contraseña de aplicación de Yahoo, y define `CONTACT_EMAIL` y `PUBLIC_BASE_URL`. El correo configurado recibirá también un aviso único cuando finalice cada subasta, con ganador o sin ofertas. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes. La Neon Function y su disparador se despliegan con `deploy_neon_reminders.ps1`.
 
 No guardes secretos ni valores reales de conexión en el repositorio.
 

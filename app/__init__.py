@@ -69,6 +69,9 @@ def create_app(config_class=Config):
             "current_user": g.current_user,
             "csrf_token": generate_csrf_token,
             "current_year": datetime.now().year,
+            "contact_email": app.config.get(
+                "CONTACT_EMAIL", "remateonline@yahoo.com"
+            ),
         }
 
     @app.template_filter("uyu")
