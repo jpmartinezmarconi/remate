@@ -31,12 +31,12 @@ def process_auction_reminders():
     if not hmac.compare_digest(provided_secret, expected_authorization):
         return jsonify(error="Unauthorized."), 403
 
+    completion_counts = send_due_auction_completion_notifications()
     counts = {
         "auction_reminders": send_due_auction_reminders(),
         "closing_reminders": send_due_auction_closing_reminders(),
         "outbid_notifications": send_due_auction_outbid_notifications(),
-        "auction_completion_notifications": (
-            send_due_auction_completion_notifications()
-        ),
+        "auction_completion_notifications": completion_counts["email"],
+        "telegram_completion_notifications": completion_counts["telegram"],
     }
     return jsonify(ok=True, sent=counts)

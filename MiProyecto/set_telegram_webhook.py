@@ -73,6 +73,7 @@ def main():
             "commands": [
                 {"command": "start", "description": "Iniciar el bot"},
                 {"command": "help", "description": "Ver qué puedo consultar"},
+                {"command": "id", "description": "Ver el ID de este chat"},
             ]
         },
     )

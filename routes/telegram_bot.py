@@ -101,7 +101,14 @@ def telegram_webhook():
     if not text:
         return jsonify(ok=True)
     command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
-    if command in {"/start", "/help"}:
+    if command == "/id":
+        reply = (
+            f"El ID de este chat es: {chat_id}\n"
+            "Guardalo como TELEGRAM_NOTIFICATION_CHAT_ID en Render para recibir "
+            "avisos privados de subastas. No lo compartas públicamente."
+        )
+        links = []
+    elif command in {"/start", "/help"}:
         reply = (
             "¡Hola! Soy el bot de Remate Martínez. Puedo informarte sobre "
             "subastas activas y próximas, lotes, horarios, comisión, pagos, "

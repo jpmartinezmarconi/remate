@@ -68,7 +68,7 @@ El botón «¿Necesitás ayuda?» abre un asistente en el sitio. Responde pregun
 
 ## Bot de Telegram
 
-El bot `@rematemartinezbot` usa un webhook HTTPS (`/telegram/webhook`) y el mismo asistente de ayuda del sitio. En Render, configura `TELEGRAM_BOT_TOKEN` con el token de BotFather y `TELEGRAM_WEBHOOK_SECRET` con un valor aleatorio de 1 a 256 letras, números, guiones o guiones bajos. No compartas ni guardes el token en Git. `PUBLIC_BASE_URL` debe apuntar a la URL HTTPS del servicio (Render la expone como `RENDER_EXTERNAL_URL` si no se define).
+El bot `@rematemartinezbot` usa un webhook HTTPS (`/telegram/webhook`) y el mismo asistente de ayuda del sitio. En Render, configura `TELEGRAM_BOT_TOKEN` con el token de BotFather y `TELEGRAM_WEBHOOK_SECRET` con un valor aleatorio de 1 a 256 letras, números, guiones o guiones bajos. Para recibir avisos al finalizar subastas, iniciá un chat privado con el bot, enviá `/id` y guardá el número que responde como `TELEGRAM_NOTIFICATION_CHAT_ID` en Render. No compartas ni guardes el token o el identificador de chat en Git. `PUBLIC_BASE_URL` debe apuntar a la URL HTTPS del servicio (Render la expone como `RENDER_EXTERNAL_URL` si no se define).
 
 Después de desplegar y cargar esas variables, ejecuta desde el directorio `MiProyecto` en la consola de Render:
 
@@ -76,7 +76,7 @@ Después de desplegar y cargar esas variables, ejecuta desde el directorio `MiPr
 python set_telegram_webhook.py
 ```
 
-El script registra la URL segura del webhook y los comandos `/start` y `/help`. Para volver a registrar el webhook tras cambiar el dominio o el secreto, ejecuta el comando nuevamente.
+El script registra la URL segura del webhook y los comandos `/start`, `/help` y `/id`. Para volver a registrar el webhook tras cambiar el dominio o el secreto, ejecuta el comando nuevamente.
 
 ## Despliegue en Render
 
@@ -84,7 +84,7 @@ Render sirve la aplicación web y Neon almacena la base de datos PostgreSQL. Con
 
 ### Programar avisos por email con Neon
 
-Desde `MiProyecto`, instala la CLI de Neon (`npm install -g neon@latest`), inicia sesión con `neon login` y enlaza el proyecto con `neon link`. Crea un secreto aleatorio con `python -c "import secrets; print(secrets.token_urlsafe(32))"` y configura el mismo valor, sin publicarlo, como `REMINDER_TRIGGER_SECRET` en el servicio web de Render. En Render, configura `SMTP_PASSWORD` con la contraseña de aplicación de Yahoo y revisa `CONTACT_EMAIL` y `PUBLIC_BASE_URL`.
+Desde `MiProyecto`, instala la CLI de Neon (`npm install -g neon@latest`), inicia sesión con `neon login` y enlaza el proyecto con `neon link`. Crea un secreto aleatorio con `python -c "import secrets; print(secrets.token_urlsafe(32))"` y configura el mismo valor, sin publicarlo, como `REMINDER_TRIGGER_SECRET` en el servicio web de Render. En Render, configura `SMTP_PASSWORD` con la contraseña de aplicación de Yahoo y revisa `CONTACT_EMAIL`, `PUBLIC_BASE_URL` y `TELEGRAM_NOTIFICATION_CHAT_ID`.
 
 Con el repositorio actualizado, ejecuta el script una vez desde PowerShell para desplegar la función y registrar el disparador cada cinco minutos (UTC). El script solicita el secreto de forma oculta:
 

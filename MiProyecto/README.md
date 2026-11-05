@@ -41,14 +41,14 @@ La portada explica el funcionamiento del remate, incluyendo la comisión general
 
 El botón «¿Necesitás ayuda?» abre un asistente de preguntas frecuentes que responde con información del sitio y consulta los lotes publicados en la base de datos. No utiliza servicios de IA externos.
 
-El bot `@rematemartinezbot` comparte esas respuestas mediante el webhook HTTPS `/telegram/webhook`. Configura `TELEGRAM_BOT_TOKEN` (token de BotFather) y `TELEGRAM_WEBHOOK_SECRET` como secretos del servicio web de Render. Tras desplegar y configurar ambas variables, ejecuta `python set_telegram_webhook.py` desde este directorio para registrar el webhook y los comandos `/start` y `/help`. No publiques el token ni lo envíes por chat.
+El bot `@rematemartinezbot` comparte esas respuestas mediante el webhook HTTPS `/telegram/webhook`. Configura `TELEGRAM_BOT_TOKEN` (token de BotFather) y `TELEGRAM_WEBHOOK_SECRET` como secretos del servicio web de Render. Tras desplegar y configurar ambas variables, ejecuta `python set_telegram_webhook.py` desde este directorio para registrar el webhook y los comandos `/start`, `/help` y `/id`. Para recibir avisos de subastas finalizadas, iniciá un chat privado con el bot, enviá `/id` y guardá el número que responde como `TELEGRAM_NOTIFICATION_CHAT_ID` en Render. No publiques el token ni el identificador del chat.
 
 ## Desplegar en Render
 
 1. Selecciona el repositorio `jpmartinezmarconi/remate`.
 2. Configura **Root Directory** como `MiProyecto`.
 3. Usa `pip install -r requirements.txt` para compilar y `gunicorn wsgi:app` para iniciar.
-4. Configura `DATABASE_URL`, `REMINDER_TRIGGER_SECRET`, `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como variables del servicio web. Para los avisos de correo, usa Yahoo SMTP (`smtp.mail.yahoo.com`, puerto `587`), `SMTP_USERNAME` y `SMTP_FROM_EMAIL` con `remateonline@yahoo.com`, configura `SMTP_PASSWORD` con una contraseña de aplicación de Yahoo, y define `CONTACT_EMAIL` y `PUBLIC_BASE_URL`. El correo configurado recibirá también un aviso único cuando finalice cada subasta, con ganador o sin ofertas. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes. La Neon Function y su disparador se despliegan con `deploy_neon_reminders.ps1`.
+4. Configura `DATABASE_URL`, `REMINDER_TRIGGER_SECRET`, `PASSWORD_AREA_PRIVADA`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` y `TELEGRAM_NOTIFICATION_CHAT_ID` como variables del servicio web. Para los avisos de correo, usa Yahoo SMTP (`smtp.mail.yahoo.com`, puerto `587`), `SMTP_USERNAME` y `SMTP_FROM_EMAIL` con `remateonline@yahoo.com`, configura `SMTP_PASSWORD` con una contraseña de aplicación de Yahoo, y define `CONTACT_EMAIL` y `PUBLIC_BASE_URL`. El correo y Telegram recibirán un aviso único cuando finalice cada subasta, con ganador o sin ofertas. El punto de entrada WSGI aplica las migraciones pendientes antes de aceptar solicitudes. La Neon Function y su disparador se despliegan con `deploy_neon_reminders.ps1`.
 
 No guardes secretos ni valores reales de conexión en el repositorio.
 

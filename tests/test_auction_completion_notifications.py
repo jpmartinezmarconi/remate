@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import json
 import unittest
 from unittest.mock import patch
 
@@ -23,6 +24,8 @@ class AuctionCompletionConfig:
     SMTP_USERNAME = "remateonline@yahoo.com"
     SMTP_PASSWORD = "application-password"
     SMTP_FROM_EMAIL = "remateonline@yahoo.com"
+    TELEGRAM_BOT_TOKEN = "test-token"
+    TELEGRAM_NOTIFICATION_CHAT_ID = "123456"
     PUBLIC_BASE_URL = "https://remate.example.test"
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -85,8 +88,14 @@ class AuctionCompletionNotificationTest(unittest.TestCase):
             db.session.commit()
             return auction.id
 
+    @patch("app.telegram_notifications.urlopen")
     @patch("app.auction_reminders.smtplib.SMTP")
-    def test_sends_html_and_text_emails_once_for_ended_auctions(self, smtp):
+    def test_sends_html_email_and_telegram_once_for_ended_auctions(
+        self, smtp, telegram_urlopen
+    ):
+        telegram_urlopen.return_value.__enter__.return_value.read.return_value = (
+            b'{"ok":true,"result":{}}'
+        )
         now = datetime.now(timezone.utc)
         self.create_auction("Sin ofertas", closes_at=now - timedelta(minutes=2))
         self.create_auction(
@@ -105,7 +114,7 @@ class AuctionCompletionNotificationTest(unittest.TestCase):
         with self.app.app_context():
             sent = send_due_auction_completion_notifications(now)
 
-        self.assertEqual(sent, 2)
+        self.assertEqual(sent, {"email": 2, "telegram": 2})
         self.assertEqual(mail_server.send_message.call_count, 2)
         messages = [
             call.args[0] for call in mail_server.send_message.call_args_list
@@ -135,11 +144,70 @@ class AuctionCompletionNotificationTest(unittest.TestCase):
         self.assertNotIn("<Buyer>", winner_html)
         with self.app.app_context():
             self.assertEqual(AuctionCompletionNotification.query.count(), 2)
+            self.assertEqual(
+                AuctionCompletionNotification.query.filter(
+                    AuctionCompletionNotification.telegram_sent_at.isnot(None)
+                ).count(),
+                2,
+            )
+        self.assertEqual(telegram_urlopen.call_count, 2)
+        telegram_request = telegram_urlopen.call_args.args[0]
+        self.assertIn("/bottest-token/sendMessage", telegram_request.full_url)
+        telegram_payload = json.loads(telegram_request.data)
+        self.assertEqual(telegram_payload["chat_id"], "123456")
+        self.assertIn("buyer@example.test", telegram_payload["text"])
 
         smtp.reset_mock()
+        telegram_urlopen.reset_mock()
         with self.app.app_context():
-            self.assertEqual(send_due_auction_completion_notifications(now), 0)
+            self.assertEqual(
+                send_due_auction_completion_notifications(now),
+                {"email": 0, "telegram": 0},
+            )
         smtp.assert_not_called()
+        telegram_urlopen.assert_not_called()
+
+    @patch("app.telegram_notifications.urlopen")
+    @patch("app.auction_reminders.smtplib.SMTP")
+    def test_retries_failed_telegram_without_resending_completion_email(
+        self, smtp, telegram_urlopen
+    ):
+        from app.telegram_notifications import TelegramNotificationError
+
+        now = datetime.now(timezone.utc)
+        auction_id = self.create_auction(
+            "Reintento Telegram",
+            closes_at=now - timedelta(minutes=1),
+        )
+        telegram_urlopen.side_effect = TelegramNotificationError(
+            "Telegram API request failed."
+        )
+
+        with patch.object(self.app.logger, "exception"), self.app.app_context():
+            self.assertEqual(
+                send_due_auction_completion_notifications(now),
+                {"email": 1, "telegram": 0},
+            )
+            notification = db.session.get(AuctionCompletionNotification, auction_id)
+            self.assertIsNotNone(notification.sent_at)
+            self.assertIsNone(notification.telegram_sent_at)
+
+        telegram_urlopen.reset_mock()
+        telegram_urlopen.side_effect = None
+        telegram_urlopen.return_value.__enter__.return_value.read.return_value = (
+            b'{"ok":true,"result":{}}'
+        )
+        smtp.reset_mock()
+        with self.app.app_context():
+            self.assertEqual(
+                send_due_auction_completion_notifications(now),
+                {"email": 0, "telegram": 1},
+            )
+            notification = db.session.get(AuctionCompletionNotification, auction_id)
+            self.assertIsNotNone(notification.telegram_sent_at)
+
+        smtp.assert_not_called()
+        telegram_urlopen.assert_called_once()
 
     def test_rejects_naive_dispatch_time(self):
         with self.app.app_context(), self.assertRaises(ValueError):

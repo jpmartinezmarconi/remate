@@ -100,6 +100,30 @@ class TelegramBotTest(unittest.TestCase):
         )
 
     @patch("routes.telegram_bot.urlopen")
+    def test_id_command_returns_chat_id_for_notification_configuration(
+        self, mocked_urlopen
+    ):
+        mocked_urlopen.return_value.__enter__.return_value.read.return_value = (
+            b'{"ok":true,"result":{}}'
+        )
+
+        response = self.post_update(
+            {
+                "message": {
+                    "text": "/id",
+                    "chat": {"id": 12345},
+                }
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(mocked_urlopen.call_args.args[0].data)
+        self.assertEqual(payload["chat_id"], 12345)
+        self.assertIn("12345", payload["text"])
+        self.assertIn("TELEGRAM_NOTIFICATION_CHAT_ID", payload["text"])
+        self.assertNotIn("reply_markup", payload)
+
+    @patch("routes.telegram_bot.urlopen")
     def test_answers_common_questions_and_filters_non_web_links(self, mocked_urlopen):
         mocked_urlopen.return_value.__enter__.return_value.read.return_value = (
             b'{"ok":true,"result":{}}'

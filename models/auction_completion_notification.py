@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from app.database import db
 
 
@@ -13,8 +11,11 @@ class AuctionCompletionNotification(db.Model):
     )
     sent_at = db.Column(
         db.DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        nullable=True,
+    )
+    telegram_sent_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
     )
 
     auction = db.relationship("Auction")

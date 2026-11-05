@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from html import escape
@@ -6,6 +7,7 @@ import smtplib
 import ssl
 
 from flask import current_app, url_for
+from sqlalchemy import or_
 
 from app.database import db
 from models.auction import Auction
@@ -16,6 +18,10 @@ from models.auction_payment import AuctionPayment
 from models.auction_reminder import AuctionReminder
 from models.bid import Bid
 from models.user import User
+from app.telegram_notifications import (
+    TelegramNotificationError,
+    send_telegram_notification,
+)
 
 
 def _mail_configuration() -> tuple[str, int, str, str, str, str]:
@@ -190,17 +196,31 @@ def send_due_auction_closing_reminders(now: datetime | None = None) -> int:
 
 def send_due_auction_completion_notifications(
     now: datetime | None = None,
-) -> int:
+) -> dict[str, int]:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("The notification dispatch time must include a timezone.")
     now = now.astimezone(timezone.utc)
+    telegram_enabled = bool(
+        current_app.config.get("TELEGRAM_BOT_TOKEN")
+        and current_app.config.get("TELEGRAM_NOTIFICATION_CHAT_ID")
+    )
+    pending_channels = [AuctionCompletionNotification.sent_at.is_(None)]
+    if telegram_enabled:
+        pending_channels.append(
+            AuctionCompletionNotification.telegram_sent_at.is_(None)
+        )
     auctions = (
-        Auction.query.filter(
+        Auction.query.outerjoin(
+            AuctionCompletionNotification,
+            AuctionCompletionNotification.auction_id == Auction.id,
+        )
+        .filter(
             Auction.starts_at <= now,
             Auction.closes_at <= now,
-            ~Auction.id.in_(
-                db.session.query(AuctionCompletionNotification.auction_id)
+            or_(
+                AuctionCompletionNotification.auction_id.is_(None),
+                *pending_channels,
             ),
         )
         .order_by(Auction.closes_at.asc(), Auction.id.asc())
@@ -208,17 +228,36 @@ def send_due_auction_completion_notifications(
     )
     if not auctions:
         current_app.logger.info("No auction completion email notifications are due.")
-        return 0
+        return {"email": 0, "telegram": 0}
 
-    host, port, username, password, sender, base_url = _mail_configuration()
-    recipient = current_app.config.get("CONTACT_EMAIL", "remateonline@yahoo.com")
-    if not recipient or "@" not in recipient:
-        raise RuntimeError("CONTACT_EMAIL must be a valid email address.")
-
+    email_due = any(
+        AuctionCompletionNotification.query.filter_by(auction_id=auction.id)
+        .with_entities(AuctionCompletionNotification.sent_at)
+        .scalar()
+        is None
+        for auction in auctions
+    )
+    if email_due:
+        host, port, username, password, sender, base_url = _mail_configuration()
+        recipient = current_app.config.get(
+            "CONTACT_EMAIL", "remateonline@yahoo.com"
+        )
+        if not recipient or "@" not in recipient:
+            raise RuntimeError("CONTACT_EMAIL must be a valid email address.")
+        mail_context = smtplib.SMTP(host, port, timeout=30)
+    else:
+        sender = current_app.config.get("SMTP_FROM_EMAIL")
+        recipient = current_app.config.get(
+            "CONTACT_EMAIL", "remateonline@yahoo.com"
+        )
+        base_url = current_app.config.get("PUBLIC_BASE_URL")
+        mail_context = nullcontext(None)
     sent_count = 0
-    with smtplib.SMTP(host, port, timeout=30) as mail_server:
-        mail_server.starttls(context=ssl.create_default_context())
-        mail_server.login(username, password)
+    telegram_sent_count = 0
+    with mail_context as mail_server:
+        if mail_server is not None:
+            mail_server.starttls(context=ssl.create_default_context())
+            mail_server.login(username, password)
 
         for candidate in auctions:
             auction = (
@@ -229,9 +268,22 @@ def send_due_auction_completion_notifications(
                 )
                 .scalar_one_or_none()
             )
-            if auction is None or AuctionCompletionNotification.query.filter_by(
-                auction_id=candidate.id
-            ).first():
+            if auction is None:
+                db.session.rollback()
+                continue
+
+            notification = AuctionCompletionNotification.query.filter_by(
+                auction_id=auction.id
+            ).first()
+            if notification is None:
+                notification = AuctionCompletionNotification(auction_id=auction.id)
+                db.session.add(notification)
+                db.session.flush()
+            needs_email = notification.sent_at is None
+            needs_telegram = (
+                telegram_enabled and notification.telegram_sent_at is None
+            )
+            if not needs_email and not needs_telegram:
                 db.session.rollback()
                 continue
 
@@ -243,8 +295,6 @@ def send_due_auction_completion_notifications(
             auction_url = _auction_url(base_url, auction.id)
             closed_at = auction.closes_at_montevideo.strftime("%d/%m/%Y a las %H:%M")
             message = EmailMessage()
-            message["From"] = sender
-            message["To"] = recipient
 
             if winner_bid is None:
                 status = "Sin ofertas"
@@ -283,8 +333,7 @@ def send_due_auction_completion_notifications(
                     f"<p><strong>Pago:</strong> {escape(payment_details)}</p>"
                 )
 
-            message["Subject"] = subject
-            message.set_content(
+            text_body = (
                 f"Subasta finalizada: {auction.title}\n"
                 f"Estado: {status}\n"
                 f"Lote: {auction.display_lot_number}\n"
@@ -301,41 +350,56 @@ def send_due_auction_completion_notifications(
                 )
                 + f"\nVer lote: {auction_url}\n\nRemate Martínez"
             )
-            message.add_alternative(
-                "<!doctype html><html lang=\"es\"><body style=\"margin:0;"
-                "padding:24px;background:#f2f5f8;font-family:Arial,sans-serif;"
-                "color:#1f2937\"><main style=\"max-width:600px;margin:auto;"
-                "padding:28px;background:#fff;border-radius:12px\">"
-                "<p style=\"margin:0 0 8px;color:#64748b\">REMATE MARTÍNEZ</p>"
-                "<h1 style=\"margin:0 0 16px;font-size:24px\">Subasta finalizada</h1>"
-                f"<p style=\"display:inline-block;padding:7px 12px;border-radius:20px;"
-                f"background:#e8f1fb;color:#064584\"><strong>{escape(status)}</strong></p>"
-                f"<h2 style=\"font-size:20px\">{escape(auction.title)}</h2>"
-                f"<p><strong>Lote:</strong> {escape(auction.display_lot_number)}<br>"
-                f"<strong>Cierre:</strong> {escape(closed_at)} (hora de Uruguay)</p>"
-                f"<p>{escape(summary)}</p>{details}"
-                f"<p style=\"margin:24px 0\"><a href=\"{escape(auction_url, quote=True)}\" "
-                "style=\"display:inline-block;padding:12px 18px;background:#064584;"
-                "color:white;text-decoration:none;border-radius:6px\">Ver lote</a></p>"
-                "<hr style=\"border:0;border-top:1px solid #e5e7eb\">"
-                "<p style=\"margin-bottom:0;color:#64748b\">Aviso automático · "
-                "Remate Martínez</p></main></body></html>",
-                subtype="html",
-            )
-            mail_server.send_message(message)
-            db.session.add(
-                AuctionCompletionNotification(
-                    auction_id=auction.id,
-                    sent_at=now,
+            if needs_telegram:
+                try:
+                    if send_telegram_notification(text_body):
+                        notification.telegram_sent_at = now
+                        db.session.commit()
+                        telegram_sent_count += 1
+                except TelegramNotificationError:
+                    current_app.logger.exception(
+                        "Could not send the Telegram completion notification "
+                        "for auction %s.",
+                        auction.id,
+                    )
+
+            if needs_email:
+                message["Subject"] = subject
+                message["From"] = sender
+                message["To"] = recipient
+                message.set_content(text_body)
+                message.add_alternative(
+                    "<!doctype html><html lang=\"es\"><body style=\"margin:0;"
+                    "padding:24px;background:#f2f5f8;font-family:Arial,sans-serif;"
+                    "color:#1f2937\"><main style=\"max-width:600px;margin:auto;"
+                    "padding:28px;background:#fff;border-radius:12px\">"
+                    "<p style=\"margin:0 0 8px;color:#64748b\">REMATE MARTÍNEZ</p>"
+                    "<h1 style=\"margin:0 0 16px;font-size:24px\">Subasta finalizada</h1>"
+                    f"<p style=\"display:inline-block;padding:7px 12px;border-radius:20px;"
+                    f"background:#e8f1fb;color:#064584\"><strong>{escape(status)}</strong></p>"
+                    f"<h2 style=\"font-size:20px\">{escape(auction.title)}</h2>"
+                    f"<p><strong>Lote:</strong> {escape(auction.display_lot_number)}<br>"
+                    f"<strong>Cierre:</strong> {escape(closed_at)} (hora de Uruguay)</p>"
+                    f"<p>{escape(summary)}</p>{details}"
+                    f"<p style=\"margin:24px 0\"><a href=\"{escape(auction_url, quote=True)}\" "
+                    "style=\"display:inline-block;padding:12px 18px;background:#064584;"
+                    "color:white;text-decoration:none;border-radius:6px\">Ver lote</a></p>"
+                    "<hr style=\"border:0;border-top:1px solid #e5e7eb\">"
+                    "<p style=\"margin-bottom:0;color:#64748b\">Aviso automático · "
+                    "Remate Martínez</p></main></body></html>",
+                    subtype="html",
                 )
-            )
-            db.session.commit()
-            sent_count += 1
+                mail_server.send_message(message)
+                notification.sent_at = now
+                db.session.commit()
+                sent_count += 1
 
     current_app.logger.info(
-        "Sent %s auction completion email notifications.", sent_count
+        "Sent %s auction completion email and %s Telegram notifications.",
+        sent_count,
+        telegram_sent_count,
     )
-    return sent_count
+    return {"email": sent_count, "telegram": telegram_sent_count}
 
 
 def send_due_auction_outbid_notifications() -> int:
