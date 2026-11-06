@@ -29,10 +29,10 @@ services:
       - key: SMTP_PORT
         value: "587"
       - key: SMTP_USERNAME
-        value: inforemateonline@gmail.com
-      - key: SMTP_PASSWORD
+        value: inforematemartinez@gmail.com
+      - key: gmail_SMTP
         sync: false
       - key: SMTP_FROM_EMAIL
-        value: inforemateonline@gmail.com
+        value: inforematemartinez@gmail.com
       - key: PUBLIC_BASE_URL
         sync: false

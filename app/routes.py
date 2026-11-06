@@ -2,6 +2,7 @@ import hmac
 
 from flask import Blueprint, current_app, jsonify, request
 
+from app.database import db
 from app.auction_reminders import (
     send_due_auction_completion_notifications,
     send_due_auction_closing_reminders,
@@ -31,12 +32,26 @@ def process_auction_reminders():
     if not hmac.compare_digest(provided_secret, expected_authorization):
         return jsonify(error="Unauthorized."), 403
 
-    completion_counts = send_due_auction_completion_notifications()
-    counts = {
-        "auction_reminders": send_due_auction_reminders(),
-        "closing_reminders": send_due_auction_closing_reminders(),
-        "outbid_notifications": send_due_auction_outbid_notifications(),
-        "auction_completion_notifications": completion_counts["email"],
-        "telegram_completion_notifications": completion_counts["telegram"],
-    }
+    counts = {}
+    errors = []
+    jobs = (
+        ("outbid_notifications", send_due_auction_outbid_notifications),
+        ("auction_reminders", send_due_auction_reminders),
+        ("closing_reminders", send_due_auction_closing_reminders),
+        ("completion_notifications", send_due_auction_completion_notifications),
+    )
+    for name, job in jobs:
+        try:
+            result = job()
+            if name == "completion_notifications":
+                counts["auction_completion_notifications"] = result["email"]
+                counts["telegram_completion_notifications"] = result["telegram"]
+            else:
+                counts[name] = result
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("Reminder job %s failed.", name)
+            errors.append(name)
+    if errors:
+        return jsonify(ok=False, sent=counts, failed=errors), 503
     return jsonify(ok=True, sent=counts)

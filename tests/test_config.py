@@ -4,10 +4,36 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from config import _database_url_from_environment
+from config import _database_url_from_environment, _smtp_settings_from_environment
 
 
 class ConfigurationTest(unittest.TestCase):
+    def test_existing_gmail_secret_uses_correct_account_and_takes_priority(self):
+        with patch.dict(os.environ, {
+            "gmail_SMTP": "aaaa bbbb cccc dddd",
+            "SMTP_PASSWORD": "old-password",
+            "SMTP_USERNAME": "old@example.test",
+            "SMTP_FROM_EMAIL": "old@example.test",
+            "SMTP_HOST": "smtp.example.test",
+        }, clear=True):
+            settings = _smtp_settings_from_environment()
+        self.assertEqual(settings["SMTP_HOST"], "smtp.gmail.com")
+        self.assertEqual(settings["SMTP_PORT"], 587)
+        self.assertEqual(settings["SMTP_USERNAME"], "inforematemartinez@gmail.com")
+        self.assertEqual(settings["SMTP_FROM_EMAIL"], "inforematemartinez@gmail.com")
+        self.assertEqual(settings["SMTP_PASSWORD"], "aaaabbbbccccdddd")
+
+    def test_legacy_smtp_configuration_is_preserved_without_gmail_secret(self):
+        with patch.dict(os.environ, {
+            "SMTP_HOST": "smtp.example.test", "SMTP_PORT": "587",
+            "SMTP_USERNAME": "sender@example.test", "SMTP_PASSWORD": "test-password",
+            "SMTP_FROM_EMAIL": "sender@example.test",
+        }, clear=True):
+            settings = _smtp_settings_from_environment()
+        self.assertEqual(settings["SMTP_HOST"], "smtp.example.test")
+        self.assertEqual(settings["SMTP_USERNAME"], "sender@example.test")
+        self.assertEqual(settings["SMTP_PASSWORD"], "test-password")
+
     def test_reminder_trigger_secret_uses_environment(self):
         environment = os.environ.copy()
         environment["REMINDER_TRIGGER_SECRET"] = "test-reminder-secret"

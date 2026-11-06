@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
 from html import escape
 import hmac
+import re
 from io import BytesIO
 from functools import wraps
 import smtplib
@@ -230,7 +231,10 @@ def sales():
 @private_area_required
 @csrf_protect
 def send_winner_test_email():
-    recipient = "inforemateonline@gmail.com"
+    recipient = request.form.get("recipient", "inforemateonline@gmail.com").strip()
+    if len(recipient) > 254 or not re.fullmatch(r"[^\s@<>(),;:]+@[^\s@<>(),;:]+\.[^\s@<>(),;:]+", recipient):
+        flash("Ingresá una dirección de correo válida para la prueba.", "danger")
+        return redirect(url_for("private_area.sales"))
     try:
         host, port, username, password, sender, base_url = _mail_configuration()
     except RuntimeError:

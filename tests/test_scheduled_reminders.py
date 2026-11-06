@@ -42,6 +42,23 @@ class ScheduledRemindersTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
 
+    @patch("app.routes.send_due_auction_completion_notifications", side_effect=RuntimeError("failure"))
+    @patch("app.routes.send_due_auction_closing_reminders", return_value=0)
+    @patch("app.routes.send_due_auction_reminders", return_value=0)
+    @patch("app.routes.send_due_auction_outbid_notifications", return_value=1)
+    def test_failed_job_does_not_prevent_outbid_notifications(
+        self, outbid, reminders, closing, completion
+    ):
+        response = self.client.post(
+            "/api/internal/process-reminders",
+            headers={"Authorization": "Bearer test-reminder-secret"},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json["sent"]["outbid_notifications"], 1)
+        self.assertEqual(response.json["failed"], ["completion_notifications"])
+        for job in (outbid, reminders, closing, completion):
+            job.assert_called_once_with()
+
     @patch("app.routes.send_due_auction_outbid_notifications", return_value=3)
     @patch(
         "app.routes.send_due_auction_completion_notifications",

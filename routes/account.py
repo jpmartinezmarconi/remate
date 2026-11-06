@@ -171,8 +171,10 @@ def update_profile():
 @csrf_protect
 def pay_for_auction(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if auction.closes_at > now:
+    closes_at = auction.closes_at
+    if closes_at.tzinfo is None:
+        closes_at = closes_at.replace(tzinfo=timezone.utc)
+    if closes_at > datetime.now(timezone.utc):
         abort(404)
     top_bid = (
         Bid.query.filter_by(auction_id=auction.id)

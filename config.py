@@ -39,17 +39,40 @@ def _database_url_from_environment():
     return database_url
 
 
+def _smtp_settings_from_environment():
+    gmail_password = os.getenv("gmail_SMTP")
+    if gmail_password:
+        # A dedicated Gmail secret takes precedence over older SMTP settings.
+        username = os.getenv("GMAIL_SMTP_USERNAME") or "inforematemartinez@gmail.com"
+        return {
+            "SMTP_HOST": "smtp.gmail.com",
+            "SMTP_PORT": 587,
+            "SMTP_USERNAME": username,
+            "SMTP_PASSWORD": "".join(gmail_password.split()),
+            "SMTP_FROM_EMAIL": username,
+        }
+    contact = os.getenv("CONTACT_EMAIL", "remateonline@yahoo.com")
+    return {
+        "SMTP_HOST": os.getenv("SMTP_HOST", "smtp.mail.yahoo.com"),
+        "SMTP_PORT": int(os.getenv("SMTP_PORT", "587")),
+        "SMTP_USERNAME": os.getenv("SMTP_USERNAME", contact),
+        "SMTP_PASSWORD": os.getenv("SMTP_PASSWORD"),
+        "SMTP_FROM_EMAIL": os.getenv("SMTP_FROM_EMAIL", contact),
+    }
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-change-me")
     CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "remateonline@yahoo.com")
     PRIVATE_AREA_PASSWORD = os.getenv("PASSWORD_AREA_PRIVADA") or os.getenv(
         "PRIVATE_AREA_PASSWORD"
     )
-    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.mail.yahoo.com")
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USERNAME = os.getenv("SMTP_USERNAME", CONTACT_EMAIL)
-    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", CONTACT_EMAIL)
+    _smtp = _smtp_settings_from_environment()
+    SMTP_HOST = _smtp["SMTP_HOST"]
+    SMTP_PORT = _smtp["SMTP_PORT"]
+    SMTP_USERNAME = _smtp["SMTP_USERNAME"]
+    SMTP_PASSWORD = _smtp["SMTP_PASSWORD"]
+    SMTP_FROM_EMAIL = _smtp["SMTP_FROM_EMAIL"]
     PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL")
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET")

@@ -96,6 +96,45 @@ class PrivateAreaTest(unittest.TestCase):
             session["user_id"] = user_id
         return user_id
 
+    def test_payment_page_handles_aware_and_naive_closing_dates(self):
+        self.login()
+        self.create_lot("PAY-TZ")
+        winner_id = self.login_user("winner-tz")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            auction.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            auction.current_price = 150
+            db.session.add(Bid(amount=150, auction=auction, user_id=winner_id))
+            db.session.commit()
+
+        # SQLite removes tzinfo; reproduce the aware values returned by PostgreSQL.
+        for aware in (False, True):
+            for closed in (True, False):
+                with self.subTest(aware=aware, closed=closed):
+                    close_time = datetime.now(timezone.utc) + timedelta(
+                        minutes=-5 if closed else 5
+                    )
+                    if aware:
+                        close_time = close_time.astimezone(timezone(timedelta(hours=3)))
+                    else:
+                        close_time = close_time.replace(tzinfo=None)
+
+                    def load_auction(model, identifier):
+                        auction = db.session.get(model, identifier)
+                        auction.closes_at = close_time
+                        return auction
+
+                    with patch.object(db, "get_or_404", side_effect=load_auction):
+                        response = self.client.get(f"/cuenta/subasta/{auction_id}/pagar")
+                    self.assertEqual(response.status_code, 200 if closed else 404)
+                    if closed:
+                        page = response.get_data(as_text=True)
+                        self.assertIn("Transferencia bancaria BROU", page)
+                        self.assertIn("Mi Dinero / Red Pagos", page)
+                        self.assertIn("001901236", page)
+                        self.assertIn("9102129", page)
+
     def test_navigation_links_follow_requested_order(self):
         response = self.client.get("/")
         page = response.get_data(as_text=True)
@@ -326,6 +365,29 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn("¡Ganaste la subasta!", html_body)
         self.assertIn("DEMO-001", html_body)
         self.assertIn("$U 1,800.00", html_body)
+
+    @patch("routes.private_area.smtplib.SMTP")
+    def test_private_area_test_email_accepts_requested_recipient(self, smtp):
+        self.login()
+        response = self.client.post(
+            "/area-privada/ventas/enviar-correo-prueba",
+            data={"csrf_token": self.csrf_token(), "recipient": "recipient@example.test"},
+            follow_redirects=True,
+        )
+        self.assertIn("Correo de prueba enviado a recipient@example.test", response.get_data(as_text=True))
+        message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "recipient@example.test")
+
+    @patch("routes.private_area.smtplib.SMTP")
+    def test_private_area_test_email_rejects_multiple_recipients(self, smtp):
+        self.login()
+        response = self.client.post(
+            "/area-privada/ventas/enviar-correo-prueba",
+            data={"csrf_token": self.csrf_token(), "recipient": "a@example.test,b@example.test"},
+            follow_redirects=True,
+        )
+        self.assertIn("Ingresá una dirección de correo válida", response.get_data(as_text=True))
+        smtp.assert_not_called()
 
     def test_creates_grouped_unit_lot_with_persistent_photo(self):
         self.login()
