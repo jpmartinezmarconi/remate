@@ -19,8 +19,8 @@ class ConfigurationTest(unittest.TestCase):
             settings = _smtp_settings_from_environment()
         self.assertEqual(settings["SMTP_HOST"], "smtp.gmail.com")
         self.assertEqual(settings["SMTP_PORT"], 587)
-        self.assertEqual(settings["SMTP_USERNAME"], "inforematemartinez@gmail.com")
-        self.assertEqual(settings["SMTP_FROM_EMAIL"], "inforematemartinez@gmail.com")
+        self.assertEqual(settings["SMTP_USERNAME"], "inforemateonline@gmail.com")
+        self.assertEqual(settings["SMTP_FROM_EMAIL"], "inforemateonline@gmail.com")
         self.assertEqual(settings["SMTP_PASSWORD"], "aaaabbbbccccdddd")
 
     def test_legacy_smtp_configuration_is_preserved_without_gmail_secret(self):

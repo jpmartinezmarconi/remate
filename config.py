@@ -43,7 +43,7 @@ def _smtp_settings_from_environment():
     gmail_password = os.getenv("gmail_SMTP")
     if gmail_password:
         # A dedicated Gmail secret takes precedence over older SMTP settings.
-        username = os.getenv("GMAIL_SMTP_USERNAME") or "inforematemartinez@gmail.com"
+        username = os.getenv("GMAIL_SMTP_USERNAME") or "inforemateonline@gmail.com"
         return {
             "SMTP_HOST": "smtp.gmail.com",
             "SMTP_PORT": 587,
