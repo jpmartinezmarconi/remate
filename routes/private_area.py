@@ -300,8 +300,16 @@ def send_winner_test_email():
     )
 
     try:
-        with smtplib.SMTP(host, port, timeout=30) as mail_server:
-            mail_server.starttls(context=ssl.create_default_context())
+        direct_tls = request.form.get("direct_tls") == "1" and host == "smtp.gmail.com"
+        if direct_tls:
+            connection = smtplib.SMTP_SSL(
+                host, 465, timeout=30, context=ssl.create_default_context()
+            )
+        else:
+            connection = smtplib.SMTP(host, port, timeout=30)
+        with connection as mail_server:
+            if not direct_tls:
+                mail_server.starttls(context=ssl.create_default_context())
             mail_server.login(username, password)
             mail_server.send_message(message)
     except (OSError, smtplib.SMTPException):

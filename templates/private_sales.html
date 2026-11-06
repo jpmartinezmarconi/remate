@@ -25,6 +25,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="test-email-recipient" class="form-label">Correo destinatario</label>
         <input id="test-email-recipient" name="recipient" type="email" class="form-control mb-2" value="inforemateonline@gmail.com" maxlength="254" required>
+        <label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="direct_tls" value="1"> Probar conexión alternativa Gmail (TLS 465)</label>
         <button class="btn btn-auction" type="submit">Enviar correo de prueba</button>
       </form>
     </div>

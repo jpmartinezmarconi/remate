@@ -378,6 +378,22 @@ class PrivateAreaTest(unittest.TestCase):
         message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
         self.assertEqual(message["To"], "recipient@example.test")
 
+    @patch("routes.private_area.smtplib.SMTP_SSL")
+    def test_private_area_can_test_gmail_direct_tls(self, smtp):
+        self.login()
+        self.app.config["SMTP_HOST"] = "smtp.gmail.com"
+        response = self.client.post(
+            "/area-privada/ventas/enviar-correo-prueba",
+            data={"csrf_token": self.csrf_token(), "recipient": "recipient@example.test", "direct_tls": "1"},
+            follow_redirects=True,
+        )
+        self.assertIn("Correo de prueba enviado", response.get_data(as_text=True))
+        self.assertEqual(smtp.call_args.args, ("smtp.gmail.com", 465))
+        server = smtp.return_value.__enter__.return_value
+        server.starttls.assert_not_called()
+        server.login.assert_called_once()
+        server.send_message.assert_called_once()
+
     @patch("routes.private_area.smtplib.SMTP")
     def test_private_area_test_email_rejects_multiple_recipients(self, smtp):
         self.login()
