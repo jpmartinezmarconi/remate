@@ -50,6 +50,8 @@ Los modelos están en `models/`. La comisión general es del 20% y se propone co
 
 Las subastas duran de 1 a 168 horas enteras (máximo 7 días). Las fichas y tarjetas de subastas activas muestran una cuenta regresiva que se resalta en rojo durante el último minuto. La primera oferta puede igualar el precio base o ser cualquier importe superior; desde la segunda puja se aplican incrementos según el precio actual: $U 50 hasta $U 500, $U 100 por encima de $U 500 y hasta $U 2.000, $U 500 por encima de $U 2.000 y hasta $U 10.000, y $U 1.000 por encima de $U 10.000. En ventas por unidades, estos importes son por unidad. Quien tenga la oferta más alta no puede volver a ofertar hasta que otro participante la supere.
 
+Desde la segunda oferta, el botón muestra y registra automáticamente el precio actual más un incremento, sin escribir ningún monto. Si otra persona oferta antes de confirmar, la página solicita revisar el nuevo importe. La primera oferta sigue ingresándose manualmente.
+
 ## Mi cuenta y pagos
 
 Si un cliente olvida su contraseña, puede solicitar un enlace de recuperación por correo desde la página de ingreso. El enlace firmado vence en una hora y solo puede usarse una vez; el envío requiere la configuración SMTP existente.

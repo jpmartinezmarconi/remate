@@ -31,6 +31,8 @@ El área privada `/area-privada` permite crear grupos de ventas independientes y
 
 El área privada también incluye secciones para consultar todas las pujas con los datos de contacto de cada participante y todas las cuentas de clientes registradas. El acceso a ambas requiere autenticarse en `/area-privada`.
 
+Después de la primera oferta manual, el botón de ofertar calcula y registra automáticamente el precio actual más un incremento. Si el precio cambia antes de confirmar, el usuario debe revisar la nueva oferta.
+
 El panel de usuario `/cuenta` permite actualizar sus datos, revisar las subastas en que participó y las ganadas, y registrar una forma de pago para los lotes adjudicados. Los usuarios pueden marcar artículos favoritos y verlos en Inicio; también se muestran los últimos ocho artículos visitados en el mismo navegador. Tras pujar correctamente se recomiendan hasta cuatro lotes del mismo grupo, completados con otros disponibles. Si otra persona supera una oferta, se avisa por correo al participante desplazado; la Neon Function procesa esos avisos cada cinco minutos. También avisa por correo a cada participante cuando faltan entre 25 y 30 minutos para el cierre, una sola vez por lote y usuario. El ganador puede elegir transferencia al BROU (cuenta Nº 001901236, JUAN MARTINEZ) o a Mi Dinero Red Pagos (cuenta Nº 9102129); el pago queda pendiente de confirmación.
 
 Si un cliente olvida su contraseña, puede solicitar desde Ingresar un enlace firmado de recuperación por correo; vence en una hora y es de un solo uso. Requiere la configuración SMTP del servicio.

@@ -1059,23 +1059,22 @@ class PrivateAreaTest(unittest.TestCase):
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "100"},
         )
+        with self.app.app_context():
+            first_bid_id = Bid.query.one().id
         with self.client.session_transaction() as session:
             session["user_id"] = other_bidder_id
-        too_low = self.client.post(
+        offer_page = self.client.get(f"/subasta/{auction_id}").get_data(as_text=True)
+        self.assertIn("Ofertar $U 150.00", offer_page)
+        self.assertNotIn('name="amount"', offer_page)
+        stale = self.client.post(
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "149"},
             follow_redirects=True,
         )
-        self.assertIn("próxima oferta válida es $U 150.00", too_low.get_data(as_text=True))
-        off_increment = self.client.post(
-            f"/subasta/{auction_id}/ofertar",
-            data={"csrf_token": self.csrf_token(), "amount": "151"},
-            follow_redirects=True,
-        )
-        self.assertIn("próxima oferta válida es $U 200.00", off_increment.get_data(as_text=True))
+        self.assertIn("La oferta cambió", stale.get_data(as_text=True))
         self.client.post(
             f"/subasta/{auction_id}/ofertar",
-            data={"csrf_token": self.csrf_token(), "amount": "150"},
+            data={"csrf_token": self.csrf_token(), "expected_bid_id": str(first_bid_id), "amount": "9999"},
         )
         self.assertEqual(self.bid_notification.call_count, 2)
         self.assertIn("Oferta: $U 150.00", self.bid_notification.call_args.args[1])
@@ -1084,10 +1083,82 @@ class PrivateAreaTest(unittest.TestCase):
         detail = self.client.get(f"/subasta/{auction_id}")
         self.assertIn(b"OFERTA ACTUAL", detail.data)
         self.assertIn(b"$U 150.00", detail.data)
-        self.assertIn(b"saltos de $U 50.00", detail.data)
+        self.assertIn(b"Ofertar $U 200.00", detail.data)
         self.assertIn(b"data-auction-countdown", detail.data)
         self.assertIn(b"data-bid-form", detail.data)
         self.assertIn(b"auction-countdown.js", detail.data)
+
+    def test_automatic_bid_rejects_outdated_bid_and_applies_tiers(self):
+        self.login()
+        self.create_lot("AUTO-TIERS")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        first_id = self.login_user("tier-first")
+        second_id = self.login_user("tier-second")
+        for price, increment in ((Decimal("499.99"), Decimal("50")),
+                                 (Decimal("500"), Decimal("50")),
+                                 (Decimal("500.01"), Decimal("100")),
+                                 (Decimal("2000"), Decimal("100")),
+                                 (Decimal("2000.01"), Decimal("500")),
+                                 (Decimal("10000"), Decimal("500")),
+                                 (Decimal("10000.01"), Decimal("1000"))):
+            with self.subTest(price=price):
+                with self.app.app_context():
+                    AuctionOutbidNotification.query.delete()
+                    Bid.query.delete()
+                    auction = db.session.get(Auction, auction_id)
+                    auction.current_price = price
+                    old_bid = Bid(amount=price, auction=auction, user_id=first_id)
+                    db.session.add(old_bid)
+                    db.session.commit()
+                    old_bid_id = old_bid.id
+                with self.client.session_transaction() as session:
+                    session["user_id"] = second_id
+                response = self.client.post(
+                    f"/subasta/{auction_id}/ofertar",
+                    data={"csrf_token": self.csrf_token(), "expected_bid_id": str(old_bid_id)},
+                    follow_redirects=True,
+                )
+                self.assertIn("Oferta registrada", response.get_data(as_text=True))
+                with self.app.app_context():
+                    self.assertEqual(db.session.get(Auction, auction_id).current_price, price + increment)
+                    self.assertEqual(AuctionOutbidNotification.query.count(), 1)
+                with self.client.session_transaction() as session:
+                    session["user_id"] = first_id
+                response = self.client.post(
+                    f"/subasta/{auction_id}/ofertar",
+                    data={"csrf_token": self.csrf_token(), "expected_bid_id": str(old_bid_id)},
+                    follow_redirects=True,
+                )
+                self.assertIn("La oferta cambió", response.get_data(as_text=True))
+                with self.app.app_context():
+                    self.assertEqual(Bid.query.count(), 2)
+
+    def test_automatic_bid_shows_unit_total_and_limits_maximum_amount(self):
+        self.login()
+        self.create_lot("AUTO-UNIT")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            auction.current_price = Decimal("9999999999.99")
+            old_user = User(username="auto-old", email="auto-old@example.test", password_hash="x")
+            db.session.add(old_user)
+            db.session.flush()
+            db.session.add(Bid(amount=auction.current_price, auction=auction, user_id=old_user.id))
+            db.session.commit()
+            bid_id = Bid.query.one().id
+        self.login_user("auto-new")
+        page = self.client.get(f"/subasta/{auction_id}").get_data(as_text=True)
+        self.assertIn("por unidad", page)
+        self.assertIn("Total de la oferta por 3 unidades", page)
+        response = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "expected_bid_id": str(bid_id)},
+            follow_redirects=True,
+        )
+        self.assertIn("importe máximo permitido", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Bid.query.count(), 1)
 
     def test_bid_succeeds_when_business_notification_fails(self):
         self.login()
@@ -1153,11 +1224,13 @@ class PrivateAreaTest(unittest.TestCase):
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "150"},
         )
+        with self.app.app_context():
+            first_bid_id = Bid.query.one().id
         with self.client.session_transaction() as session:
             session["user_id"] = bidder_ids[1]
         self.client.post(
             f"/subasta/{auction_id}/ofertar",
-            data={"csrf_token": self.csrf_token(), "amount": "200"},
+            data={"csrf_token": self.csrf_token(), "expected_bid_id": str(first_bid_id)},
         )
 
         with self.app.app_context():
@@ -1209,6 +1282,8 @@ class PrivateAreaTest(unittest.TestCase):
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "150"},
         )
+        with self.app.app_context():
+            first_bid_id = Bid.query.one().id
         blocked_page = self.client.get(f"/subasta/{auction_id}")
         self.assertIn(b"Tu oferta es la m\xc3\xa1s alta", blocked_page.data)
         self.assertNotIn(b"data-bid-form", blocked_page.data)
@@ -1229,13 +1304,15 @@ class PrivateAreaTest(unittest.TestCase):
             session["user_id"] = bidder_ids[1]
         self.client.post(
             f"/subasta/{auction_id}/ofertar",
-            data={"csrf_token": self.csrf_token(), "amount": "200"},
+            data={"csrf_token": self.csrf_token(), "expected_bid_id": str(first_bid_id)},
         )
+        with self.app.app_context():
+            second_bid_id = Bid.query.order_by(Bid.id.desc()).first().id
         with self.client.session_transaction() as session:
             session["user_id"] = bidder_ids[0]
         allowed_bid = self.client.post(
             f"/subasta/{auction_id}/ofertar",
-            data={"csrf_token": self.csrf_token(), "amount": "300"},
+            data={"csrf_token": self.csrf_token(), "expected_bid_id": str(second_bid_id)},
             follow_redirects=True,
         )
         self.assertIn("¡Oferta registrada!", allowed_bid.get_data(as_text=True))

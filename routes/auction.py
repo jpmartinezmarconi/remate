@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation
 import smtplib
 
 from flask import (
@@ -237,7 +237,7 @@ def upcoming_auctions():
 @auction_bp.get("/subasta/<int:auction_id>")
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
-    leading_bid = _leading_bid(auction.id) if g.current_user else None
+    leading_bid = _leading_bid(auction.id)
     related_auctions = (
         _related_auctions(auction)
         if request.args.get("bid") == "success"
@@ -262,6 +262,7 @@ def detail(auction_id: int):
     return render_template(
         "auction_detail.html",
         auction=auction,
+        leading_bid=leading_bid,
         reminder_subscribed=reminder_subscribed,
         is_favorite=(
             AuctionFavorite.query.filter_by(
@@ -378,17 +379,16 @@ def place_bid(auction_id: int):
         )
         return redirect(url_for("auction.detail", auction_id=auction.id))
 
-    try:
-        amount = Decimal(request.form.get("amount", "").replace(",", "."))
-        if not amount.is_finite():
-            raise InvalidOperation
-        amount = amount.quantize(Decimal("0.01"))
-    except (InvalidOperation, ValueError):
-        flash("Ingresá un monto válido.", "danger")
-        return redirect(url_for("auction.detail", auction_id=auction.id))
-
-    has_previous_bids = bool(auction.bids)
-    if not has_previous_bids:
+    current_price = Decimal(auction.current_price)
+    if previous_leading_bid is None:
+        try:
+            amount = Decimal(request.form.get("amount", "").replace(",", "."))
+            if not amount.is_finite():
+                raise InvalidOperation
+            amount = amount.quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            flash("Ingresá un monto válido.", "danger")
+            return redirect(url_for("auction.detail", auction_id=auction.id))
         if amount < Decimal(auction.starting_price):
             flash(
                 f"La primera oferta no puede ser menor que el precio base "
@@ -397,31 +397,36 @@ def place_bid(auction_id: int):
             )
             return redirect(url_for("auction.detail", auction_id=auction.id))
     else:
-        if amount <= Decimal(auction.current_price):
-            flash("Tu oferta no puede ser menor o igual a la oferta actual.", "danger")
-            return redirect(url_for("auction.detail", auction_id=auction.id))
-        current_price = Decimal(auction.current_price)
-        bid_increment = minimum_bid_increment(current_price)
-        amount_above_current = amount - current_price
-        valid_steps = max(
-            1,
-            int(
-                (amount_above_current / bid_increment).to_integral_value(
-                    rounding=ROUND_CEILING
-                )
-            ),
-        )
-        next_valid_offer = current_price + bid_increment * valid_steps
-        if amount_above_current < bid_increment or amount_above_current % bid_increment:
+        if request.form.get("expected_bid_id") != str(previous_leading_bid.id):
             flash(
-                f"La próxima oferta válida es $U {next_valid_offer:,.2f}; "
-                f"las pujas avanzan en saltos de $U {bid_increment:,.2f}.",
-                "danger",
+                "La oferta cambió. Revisá el nuevo importe antes de ofertar.",
+                "warning",
             )
             return redirect(url_for("auction.detail", auction_id=auction.id))
+        amount = current_price + minimum_bid_increment(current_price)
+
+    if amount > Decimal("9999999999.99"):
+        flash("La oferta supera el importe máximo permitido.", "danger")
+        return redirect(url_for("auction.detail", auction_id=auction.id))
+
+    # The conditional update protects SQLite as well as databases with row locks.
+    conditions = [
+        Auction.id == auction.id,
+        Auction.current_price == current_price,
+        Auction.starts_at <= utc_now_naive(),
+        Auction.closes_at > utc_now_naive(),
+    ]
+    if previous_leading_bid is None:
+        conditions.append(~Auction.bids.any())
+    updated = db.session.execute(
+        db.update(Auction).where(*conditions).values(current_price=amount)
+    )
+    if updated.rowcount != 1:
+        db.session.rollback()
+        flash("La oferta cambió o la subasta cerró. Revisá el lote nuevamente.", "warning")
+        return redirect(url_for("auction.detail", auction_id=auction_id))
 
     bid = Bid(amount=amount, auction=auction, bidder=g.current_user)
-    auction.current_price = amount
     db.session.add(bid)
     if (
         previous_leading_bid
