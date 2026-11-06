@@ -45,11 +45,16 @@ class PrivateAreaTest(unittest.TestCase):
             "routes.auction.send_business_notification"
         )
         self.bid_notification = self.bid_notification_patcher.start()
+        self.outbid_notification_patcher = patch(
+            "routes.auction.send_due_auction_outbid_notifications", return_value=0
+        )
+        self.outbid_notification_patcher.start()
         self.purchase_notification_patcher = patch(
             "routes.account.send_business_notification"
         )
         self.purchase_notification = self.purchase_notification_patcher.start()
         self.addCleanup(self.bid_notification_patcher.stop)
+        self.addCleanup(self.outbid_notification_patcher.stop)
         self.addCleanup(self.purchase_notification_patcher.stop)
         self.app = create_app(PrivateAreaConfig)
         self.client = self.app.test_client()
@@ -365,6 +370,22 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn("¡Ganaste la subasta!", html_body)
         self.assertIn("DEMO-001", html_body)
         self.assertIn("$U 1,800.00", html_body)
+
+    @patch("routes.private_area.send_due_auction_outbid_notifications", return_value=4)
+    def test_outbid_retry_requires_private_session_and_csrf(self, retry):
+        response = self.client.post("/area-privada/ventas/reintentar-avisos", data={"csrf_token": self.csrf_token()})
+        self.assertEqual(response.status_code, 302)
+        retry.assert_not_called()
+        self.login()
+        response = self.client.post("/area-privada/ventas/reintentar-avisos", data={})
+        self.assertEqual(response.status_code, 400)
+        retry.assert_not_called()
+        response = self.client.post(
+            "/area-privada/ventas/reintentar-avisos",
+            data={"csrf_token": self.csrf_token()}, follow_redirects=True,
+        )
+        self.assertIn("Avisos de puja superada enviados: 4", response.get_data(as_text=True))
+        retry.assert_called_once_with()
 
     @patch("routes.private_area.smtplib.SMTP")
     def test_private_area_test_email_accepts_requested_recipient(self, smtp):
@@ -1252,6 +1273,80 @@ class PrivateAreaTest(unittest.TestCase):
                 self.assertIn(f"/subasta/{auction_id}", message.get_content())
 
             self.assertIsNotNone(notification.sent_at)
+
+    def test_outbid_email_is_attempted_immediately_and_retried_if_smtp_fails(self):
+        self.login()
+        self.create_lot("IMMEDIATE-MAIL")
+        first_id = self.login_user("immediate-first")
+        second_id = self.login_user("immediate-second")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = first_id
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "150"},
+        )
+        with self.app.app_context():
+            first_bid_id = Bid.query.one().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = second_id
+
+        with patch(
+            "routes.auction.send_due_auction_outbid_notifications",
+            wraps=send_due_auction_outbid_notifications,
+        ) as send_outbid, patch("app.auction_reminders.smtplib.SMTP") as smtp:
+            mail = smtp.return_value.__enter__.return_value
+            mail.send_message.side_effect = OSError("temporary SMTP failure")
+            response = self.client.post(
+                f"/subasta/{auction_id}/ofertar",
+                data={"csrf_token": self.csrf_token(), "expected_bid_id": str(first_bid_id)},
+                follow_redirects=True,
+            )
+            self.assertIn("Oferta registrada", response.get_data(as_text=True))
+            send_outbid.assert_called_once()
+            with self.app.app_context():
+                notification = AuctionOutbidNotification.query.one()
+                self.assertIsNone(notification.sent_at)
+                self.assertEqual(Bid.query.count(), 2)
+                mail.send_message.side_effect = None
+                self.assertEqual(send_due_auction_outbid_notifications(), 1)
+                self.assertEqual(send_due_auction_outbid_notifications(), 0)
+                self.assertIsNotNone(db.session.get(AuctionOutbidNotification, notification.id).sent_at)
+                self.assertEqual(mail.send_message.call_args.args[0]["To"], "immediate-first@example.test")
+
+    def test_outbid_email_is_sent_immediately_after_bid(self):
+        self.login()
+        self.create_lot("IMMEDIATE-SUCCESS")
+        first_id = self.login_user("instant-first")
+        second_id = self.login_user("instant-second")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = first_id
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "150"},
+        )
+        with self.app.app_context():
+            first_bid_id = Bid.query.one().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = second_id
+        with patch(
+            "routes.auction.send_due_auction_outbid_notifications",
+            wraps=send_due_auction_outbid_notifications,
+        ), patch("app.auction_reminders.smtplib.SMTP") as smtp:
+            response = self.client.post(
+                f"/subasta/{auction_id}/ofertar",
+                data={"csrf_token": self.csrf_token(), "expected_bid_id": str(first_bid_id)},
+                follow_redirects=True,
+            )
+            self.assertIn("Oferta registrada", response.get_data(as_text=True))
+            message = smtp.return_value.__enter__.return_value.send_message.call_args.args[0]
+            self.assertEqual(message["To"], "instant-first@example.test")
+            self.assertIn("$U 200.00", message.get_content())
+        with self.app.app_context():
+            self.assertIsNotNone(AuctionOutbidNotification.query.one().sent_at)
 
     def test_bidder_cannot_bid_again_until_another_user_outbids_them(self):
         self.login()

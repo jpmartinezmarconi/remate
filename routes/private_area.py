@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
-from app.auction_reminders import _mail_configuration
+from app.auction_reminders import _mail_configuration, send_due_auction_outbid_notifications
 from app.database import db
 from models.auction import Auction
 from models.auction_group import AuctionGroup
@@ -225,6 +225,21 @@ def sales():
         reverse=True,
     )
     return render_template("private_sales.html", sales=sales)
+
+
+@private_area_bp.post("/ventas/reintentar-avisos")
+@private_area_required
+@csrf_protect
+def retry_outbid_notifications():
+    try:
+        sent = send_due_auction_outbid_notifications()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Could not retry all pending outbid notifications.")
+        flash("No se pudieron enviar todos los avisos pendientes. Revisá los registros.", "danger")
+    else:
+        flash(f"Avisos de puja superada enviados: {sent}.", "success")
+    return redirect(url_for("private_area.sales"))
 
 
 @private_area_bp.post("/ventas/enviar-correo-prueba")

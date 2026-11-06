@@ -402,25 +402,35 @@ def send_due_auction_completion_notifications(
     return {"email": sent_count, "telegram": telegram_sent_count}
 
 
-def send_due_auction_outbid_notifications() -> int:
-    notifications = (
-        AuctionOutbidNotification.query.filter(
-            AuctionOutbidNotification.sent_at.is_(None)
-        )
-        .order_by(AuctionOutbidNotification.id.asc())
-        .all()
+def send_due_auction_outbid_notifications(notification_id: int | None = None) -> int:
+    query = db.select(AuctionOutbidNotification.id).where(
+        AuctionOutbidNotification.sent_at.is_(None)
     )
-    if not notifications:
+    if notification_id is not None:
+        query = query.where(AuctionOutbidNotification.id == notification_id)
+    notification_ids = db.session.execute(
+        query.order_by(AuctionOutbidNotification.id.asc())
+    ).scalars().all()
+    if not notification_ids:
         current_app.logger.info("No auction outbid email notifications are due.")
         return 0
 
     host, port, username, password, sender, base_url = _mail_configuration()
     sent_count = 0
-    with smtplib.SMTP(host, port, timeout=30) as mail_server:
-        mail_server.starttls(context=ssl.create_default_context())
-        mail_server.login(username, password)
-
-        for notification in notifications:
+    failed_count = 0
+    for candidate_id in notification_ids:
+        try:
+            notification = db.session.execute(
+                db.select(AuctionOutbidNotification)
+                .where(
+                    AuctionOutbidNotification.id == candidate_id,
+                    AuctionOutbidNotification.sent_at.is_(None),
+                )
+                .with_for_update(skip_locked=True)
+            ).scalar_one_or_none()
+            if notification is None:
+                db.session.rollback()
+                continue
             outbid_bid = notification.outbid_bid
             replacement_bid = notification.replacement_bid
             user = outbid_bid.bidder
@@ -442,10 +452,21 @@ def send_due_auction_outbid_notifications() -> int:
                 f"Podés volver a ofertar desde acá: {_auction_url(base_url, auction.id)}\n\n"
                 "Remate Martínez"
             )
-            mail_server.send_message(message)
+            with smtplib.SMTP(host, port, timeout=10) as mail_server:
+                mail_server.starttls(context=ssl.create_default_context())
+                mail_server.login(username, password)
+                mail_server.send_message(message)
             notification.sent_at = datetime.now(timezone.utc)
             db.session.commit()
             sent_count += 1
+        except Exception:
+            db.session.rollback()
+            failed_count += 1
+            current_app.logger.exception(
+                "Could not send outbid notification %s; it remains pending.", candidate_id
+            )
 
     current_app.logger.info("Sent %s auction outbid email notifications.", sent_count)
+    if failed_count:
+        raise RuntimeError(f"{failed_count} outbid email notification(s) remain pending.")
     return sent_count

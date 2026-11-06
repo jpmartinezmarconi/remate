@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from urllib.parse import urlsplit
 
 from app.database import db
+from app.auction_reminders import send_due_auction_outbid_notifications
 from app.email_notifications import send_business_notification
 from models.auction import Auction
 from models.auction_favorite import AuctionFavorite
@@ -428,17 +429,25 @@ def place_bid(auction_id: int):
 
     bid = Bid(amount=amount, auction=auction, bidder=g.current_user)
     db.session.add(bid)
+    outbid_notification = None
     if (
         previous_leading_bid
         and previous_leading_bid.user_id != g.current_user.id
     ):
-        db.session.add(
-            AuctionOutbidNotification(
-                outbid_bid=previous_leading_bid,
-                replacement_bid=bid,
-            )
+        outbid_notification = AuctionOutbidNotification(
+            outbid_bid=previous_leading_bid,
+            replacement_bid=bid,
         )
+        db.session.add(outbid_notification)
     db.session.commit()
+    if outbid_notification is not None:
+        try:
+            send_due_auction_outbid_notifications(outbid_notification.id)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Immediate outbid notification failed; it remains pending for retry."
+            )
     try:
         send_business_notification(
             "Nueva puja recibida · Remate Martínez",
