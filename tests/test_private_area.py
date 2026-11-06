@@ -4,6 +4,8 @@ from decimal import Decimal
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
+from sqlalchemy import event
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app import create_app
 from app.auction_reminders import (
@@ -1414,6 +1416,53 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn("¡Oferta registrada!", allowed_bid.get_data(as_text=True))
 
         with self.app.app_context():
+            self.assertEqual(Bid.query.count(), 3)
+            self.assertEqual(AuctionOutbidNotification.query.count(), 2)
+
+    def test_outbid_user_can_bid_with_postgresql_timezone_aware_dates(self):
+        self.login()
+        self.create_lot("AWARE-BID")
+        first_id = self.login_user("aware-first")
+        second_id = self.login_user("aware-second")
+        with self.app.app_context():
+            auction_id = Auction.query.one().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = first_id
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "150"},
+        )
+        with self.app.app_context():
+            first_bid_id = Bid.query.one().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = second_id
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "expected_bid_id": str(first_bid_id)},
+        )
+        with self.app.app_context():
+            second_bid_id = Bid.query.order_by(Bid.id.desc()).first().id
+        with self.client.session_transaction() as session:
+            session["user_id"] = first_id
+
+        def make_dates_aware(auction, context):
+            for name in ("starts_at", "closes_at"):
+                value = getattr(auction, name)
+                if value.tzinfo is None:
+                    set_committed_value(auction, name, value.replace(tzinfo=timezone.utc))
+
+        event.listen(Auction, "load", make_dates_aware)
+        try:
+            response = self.client.post(
+                f"/subasta/{auction_id}/ofertar",
+                data={"csrf_token": self.csrf_token(), "expected_bid_id": str(second_bid_id)},
+                follow_redirects=True,
+            )
+        finally:
+            event.remove(Auction, "load", make_dates_aware)
+        self.assertIn("Oferta registrada", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(db.session.get(Auction, auction_id).current_price, Decimal("250"))
             self.assertEqual(Bid.query.count(), 3)
             self.assertEqual(AuctionOutbidNotification.query.count(), 2)
 

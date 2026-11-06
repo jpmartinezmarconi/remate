@@ -420,13 +420,17 @@ def place_bid(auction_id: int):
     if previous_leading_bid is None:
         conditions.append(~Auction.bids.any())
     updated = db.session.execute(
-        db.update(Auction).where(*conditions).values(current_price=amount)
+        db.update(Auction)
+        .where(*conditions)
+        .values(current_price=amount)
+        .execution_options(synchronize_session=False)
     )
     if updated.rowcount != 1:
         db.session.rollback()
         flash("La oferta cambió o la subasta cerró. Revisá el lote nuevamente.", "warning")
         return redirect(url_for("auction.detail", auction_id=auction_id))
 
+    db.session.expire(auction, ["current_price"])
     bid = Bid(amount=amount, auction=auction, bidder=g.current_user)
     db.session.add(bid)
     outbid_notification = None
