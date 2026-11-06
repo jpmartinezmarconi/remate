@@ -1,8 +1,9 @@
-from email.message import EmailMessage
 import smtplib
 import ssl
 
 from flask import current_app
+
+from app.mail_message import transactional_message
 
 
 def send_business_notification(subject: str, body: str) -> None:
@@ -20,10 +21,7 @@ def send_business_notification(subject: str, body: str) -> None:
     if not isinstance(port, int) or not 1 <= port <= 65535:
         raise RuntimeError("SMTP_PORT must be an integer between 1 and 65535.")
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = sender
-    message["To"] = recipient
+    message = transactional_message(sender, recipient, subject)
     message.set_content(body)
 
     with smtplib.SMTP(host, port, timeout=30) as mail_server:

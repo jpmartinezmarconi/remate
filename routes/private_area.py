@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from email.message import EmailMessage
 from html import escape
 import hmac
 import re
@@ -29,6 +28,7 @@ from werkzeug.utils import secure_filename
 
 from app.auction_reminders import _mail_configuration, send_due_auction_outbid_notifications
 from app.database import db
+from app.mail_message import transactional_message
 from models.auction import Auction
 from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
@@ -278,10 +278,7 @@ def send_winner_test_email():
         "Este es un correo de prueba. No se creó una subasta, puja ni pago real.\n\n"
         "Remate Martínez"
     )
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = sender
-    message["To"] = recipient
+    message = transactional_message(sender, recipient, subject)
     message.set_content(text_body)
     message.add_alternative(
         "<!doctype html><html lang=\"es\"><body style=\"margin:0;padding:24px;"

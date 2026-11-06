@@ -1,6 +1,5 @@
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from html import escape
 from urllib.parse import urljoin, urlsplit
 import smtplib
@@ -10,6 +9,7 @@ from flask import current_app, url_for
 from sqlalchemy import or_
 
 from app.database import db
+from app.mail_message import transactional_message
 from models.auction import Auction
 from models.auction_closing_reminder import AuctionClosingReminder
 from models.auction_completion_notification import AuctionCompletionNotification
@@ -91,12 +91,10 @@ def send_due_auction_reminders(now: datetime | None = None) -> int:
                 )
             auction_url = _auction_url(base_url, auction.id)
             starts_at = auction.starts_at_montevideo.strftime("%d/%m/%Y a las %H:%M")
-            message = EmailMessage()
-            message["Subject"] = (
-                f"Recordatorio: la subasta de {auction.title} comienza mañana"
+            message = transactional_message(
+                sender, user.email,
+                f"Recordatorio: la subasta de {auction.title} comienza mañana",
             )
-            message["From"] = sender
-            message["To"] = user.email
             message.set_content(
                 f"Hola {user.username}:\n\n"
                 f"La subasta de {auction.title} comienza el {starts_at} "
@@ -165,10 +163,7 @@ def send_due_auction_closing_reminders(now: datetime | None = None) -> int:
                 raise RuntimeError(
                     f"User {user.id} has no valid email for auction closing reminder."
                 )
-            message = EmailMessage()
-            message["Subject"] = f"Quedan 30 minutos: {auction.title}"
-            message["From"] = sender
-            message["To"] = user.email
+            message = transactional_message(sender, user.email, f"Quedan 30 minutos: {auction.title}")
             message.set_content(
                 f"Hola {user.username}:\n\n"
                 f"La subasta de {auction.title} (lote {auction.display_lot_number}) "
@@ -294,7 +289,6 @@ def send_due_auction_completion_notifications(
             )
             auction_url = _auction_url(base_url, auction.id)
             closed_at = auction.closes_at_montevideo.strftime("%d/%m/%Y a las %H:%M")
-            message = EmailMessage()
 
             if winner_bid is None:
                 status = "Sin ofertas"
@@ -364,9 +358,7 @@ def send_due_auction_completion_notifications(
                     )
 
             if needs_email:
-                message["Subject"] = subject
-                message["From"] = sender
-                message["To"] = recipient
+                message = transactional_message(sender, recipient, subject)
                 message.set_content(text_body)
                 message.add_alternative(
                     "<!doctype html><html lang=\"es\"><body style=\"margin:0;"
@@ -440,12 +432,10 @@ def send_due_auction_outbid_notifications(notification_id: int | None = None) ->
                     f"User {user.id} has no valid email for outbid notification "
                     f"{notification.id}."
                 )
-            message = EmailMessage()
-            message["Subject"] = f"Superaron tu oferta: {auction.title}"
-            message["From"] = sender
-            message["To"] = user.email
+            message = transactional_message(sender, user.email, f"Superaron tu oferta: {auction.title}")
             message.set_content(
                 f"Hola {user.username}:\n\n"
+                "Te escribimos porque participaste en esta subasta de Remate Martínez.\n\n"
                 f"Tu oferta de $U {outbid_bid.amount:,.2f} para "
                 f"{auction.title} (lote {auction.display_lot_number}) "
                 f"fue superada por una oferta de $U {replacement_bid.amount:,.2f}.\n\n"

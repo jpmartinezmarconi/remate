@@ -54,6 +54,8 @@ El bot `@rematemartinezbot` comparte esas respuestas mediante el webhook HTTPS `
 
 No guardes secretos ni valores reales de conexión en el repositorio.
 
+Si un mensaje llega a Spam, comprobá la advertencia y los resultados SPF, DKIM y DMARC en «Mostrar original» de Gmail. El remitente actual usa `gmail.com`, cuya autenticación gestiona Google; no modifiques el DNS del dominio web para autenticar esa cuenta. Las mejoras de formato no garantizan la bandeja de entrada. Consultá las [directrices de Google](https://support.google.com/mail/answer/81126?hl=es).
+
 ## Estructura
 
 - `main.py`: adapta la configuración de Root Directory de Render a la aplicación del repositorio.

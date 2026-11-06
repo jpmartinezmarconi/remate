@@ -1273,6 +1273,9 @@ class PrivateAreaTest(unittest.TestCase):
                 self.assertIn("Superaron tu oferta", message["Subject"])
                 self.assertIn("$U 150.00", message.get_content())
                 self.assertIn("$U 200.00", message.get_content())
+                self.assertIn("participaste en esta subasta de Remate Martínez", message.get_content())
+                self.assertIsNotNone(message["Date"])
+                self.assertIsNotNone(message["Message-ID"])
                 self.assertIn(f"/subasta/{auction_id}", message.get_content())
 
             self.assertIsNotNone(notification.sent_at)
