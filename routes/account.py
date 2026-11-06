@@ -29,6 +29,10 @@ PAYMENT_METHODS = {
     "brou_transfer": "Transferencia bancaria BROU",
     "mi_dinero": "Mi Dinero / Red Pagos",
 }
+PAYMENT_PORTALS = {
+    "brou_transfer": "https://www.ebanking.brou.com.uy/frontend/",
+    "mi_dinero": "https://webapp.midinero.com.uy/",
+}
 
 
 def _profile_values() -> dict[str, str]:
@@ -227,11 +231,7 @@ def pay_for_auction(auction_id: int):
                     "Could not send the purchase notification for auction %s.",
                     auction.id,
                 )
-        flash(
-            "Registramos tu método de pago. El pago todavía está pendiente de confirmación.",
-            "success",
-        )
-        return redirect(url_for("account.dashboard"))
+        return redirect(PAYMENT_PORTALS[method], code=303)
 
     return render_template(
         "auction_payment.html",

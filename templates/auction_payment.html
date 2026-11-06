@@ -6,7 +6,7 @@
   <div class="payment-card mt-3">
     <span class="section-kicker">LOTE GANADO · Nº {{ auction.display_lot_number }}</span>
     <h1>{{ auction.title }}</h1>
-    <p class="text-secondary">Seleccioná la cuenta a la que vas a transferir. Registraremos tu elección y Remate Martínez confirmará el pago.</p>
+    <p class="text-secondary">Seleccioná una opción para continuar al sitio oficial de eBROU o Mi Dinero. Al salir, deberás completar la transferencia manualmente con el importe y los datos de cuenta indicados aquí.</p>
     {% set hammer_total = auction.current_price * (auction.quantity if auction.sale_mode == 'units' else 1) %}
     {% set commission_total = (hammer_total * auction.commission_percent / 100)|round(2) %}
     <dl class="payment-breakdown">
@@ -33,8 +33,8 @@
           </label>
         {% endfor %}
       </fieldset>
-      <div class="alert alert-secondary mt-3"><strong>Importe total a pagar:</strong> {{ total|uyu }}. La transferencia quedará pendiente hasta confirmar su recepción.</div>
-      <button class="btn btn-auction btn-lg w-100 mt-3" type="submit">Registrar método de pago</button>
+      <div class="alert alert-secondary mt-3"><strong>Importe total a pagar:</strong> {{ total|uyu }}. Guardá el importe y los datos de cuenta antes de continuar: no se enviarán automáticamente al banco. La transferencia queda pendiente hasta que Remate Martínez confirme su recepción.</div>
+      <button class="btn btn-auction btn-lg w-100 mt-3" type="submit">Continuar al sitio de pago</button>
     </form>
   </div>
 </section>

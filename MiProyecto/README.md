@@ -37,6 +37,8 @@ El panel de usuario `/cuenta` permite actualizar sus datos, revisar las subastas
 
 Si un cliente olvida su contraseña, puede solicitar desde Ingresar un enlace firmado de recuperación por correo; vence en una hora y es de un solo uso. Requiere la configuración SMTP del servicio.
 
+El botón de pago registra el método y abre eBROU o la aplicación web de Mi Dinero. El comprador debe ingresar manualmente el importe y los datos de cuenta; el pago permanece pendiente hasta que Remate Martínez confirme su recepción.
+
 Si un cliente olvida su contraseña, puede solicitar desde Ingresar un enlace firmado de recuperación por correo; vence en una hora y es de un solo uso. Requiere la configuración SMTP del servicio.
 
 La portada explica el funcionamiento del remate, incluyendo la comisión general del 20% (se verifica el porcentaje propio de cada lote), la modalidad por lote o por unidad, y las opciones de envío y retiro. El menú principal presenta Inicio, Ingresar/Crear cuenta (o Mi cuenta), Subastas activas, Próximas subastas, Cómo funciona, Contacto y Área privada, en ese orden. Su barra utiliza cristal translúcido con reflejos neón azules y rojos.

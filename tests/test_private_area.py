@@ -1676,6 +1676,7 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b"JUAN MARTINEZ", payment_page.data)
         self.assertIn(b"9102129", payment_page.data)
         self.assertIn(b"$U 540.00", payment_page.data)
+        self.assertIn("deberás completar la transferencia", payment_page.get_data(as_text=True))
 
         response = self.client.post(
             f"/cuenta/subasta/{auction_id}/pagar",
@@ -1683,9 +1684,10 @@ class PrivateAreaTest(unittest.TestCase):
                 "csrf_token": self.csrf_token(),
                 "method": "brou_transfer",
             },
-            follow_redirects=True,
+            follow_redirects=False,
         )
-        self.assertIn("pendiente de confirmación", response.get_data(as_text=True))
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["Location"], "https://www.ebanking.brou.com.uy/frontend/")
         with self.app.app_context():
             payment = AuctionPayment.query.one()
             self.assertEqual(payment.method, "brou_transfer")
@@ -1695,6 +1697,40 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(
             "Total: $U 540.00", self.purchase_notification.call_args.args[1]
         )
+
+        response = self.client.post(
+            f"/cuenta/subasta/{auction_id}/pagar",
+            data={"csrf_token": self.csrf_token(), "method": "mi_dinero"},
+        )
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["Location"], "https://webapp.midinero.com.uy/")
+        with self.app.app_context():
+            payment = AuctionPayment.query.one()
+            self.assertEqual(payment.method, "mi_dinero")
+            self.assertEqual(payment.status, "pending")
+            self.assertEqual(payment.amount, Decimal("540.00"))
+        self.purchase_notification.assert_called_once()
+
+        response = self.client.post(
+            f"/cuenta/subasta/{auction_id}/pagar",
+            data={"csrf_token": self.csrf_token(), "method": "https://evil.example/"},
+        )
+        self.assertNotEqual(response.headers.get("Location"), "https://evil.example/")
+        with self.app.app_context():
+            self.assertEqual(AuctionPayment.query.one().method, "mi_dinero")
+
+        response = self.client.post(
+            f"/cuenta/subasta/{auction_id}/pagar", data={"method": "brou_transfer"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.login_user("payment-not-winner")
+        response = self.client.post(
+            f"/cuenta/subasta/{auction_id}/pagar",
+            data={"csrf_token": self.csrf_token(), "method": "brou_transfer"},
+        )
+        self.assertEqual(response.status_code, 403)
+        with self.app.app_context():
+            self.assertEqual(AuctionPayment.query.one().method, "mi_dinero")
 
     def test_profile_is_required_to_bid_and_can_be_completed_from_account(self):
         self.login()
