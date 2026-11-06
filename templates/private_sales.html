@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Ventas · Área privada{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <div class="private-header">
+    <div>
+      <span class="section-kicker">ADMINISTRACIÓN</span>
+      <h1>Ventas</h1>
+      <p>Lotes cerrados con pujas, su oferta ganadora y la persona adjudicada.</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.dashboard') }}">Volver al panel</a>
+  </div>
+  <nav class="d-flex flex-wrap gap-2 mb-4" aria-label="Secciones del área privada">
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.bid_history') }}">Historial de pujas</a>
+    <a class="btn btn-auction" href="{{ url_for('private_area.sales') }}">Ventas</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('private_area.registered_customers') }}">Clientes registrados</a>
+  </nav>
+  <section class="private-panel">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+      <div>
+        <h2 class="h4 mb-1">Vista previa del correo para quien gana</h2>
+        <p class="text-secondary mb-0">Envía una maqueta a inforemateonline@gmail.com sin crear una venta real.</p>
+      </div>
+      <form method="post" action="{{ url_for('private_area.send_winner_test_email') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-auction" type="submit">Enviar correo de prueba</button>
+      </form>
+    </div>
+  </section>
+  <section class="private-panel mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">Ventas realizadas</h2>
+      <span class="auction-count">{{ sales|length }} venta{{ '' if sales|length == 1 else 's' }}</span>
+    </div>
+    {% if sales %}
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr>
+            <th>Fecha de cierre</th><th>Lote</th><th>Oferta ganadora</th>
+            <th>Adjudicado a</th><th>Correo</th><th>Teléfono</th>
+          </tr></thead>
+          <tbody>
+            {% for bid in sales %}
+              <tr>
+                <td>{{ bid.auction.closes_at.strftime("%d/%m/%Y %H:%M") }} UTC</td>
+                <td><a href="{{ url_for('auction.detail', auction_id=bid.auction.id) }}">Nº {{ bid.auction.display_lot_number }} · {{ bid.auction.title }}</a></td>
+                <td class="text-nowrap">{{ bid.amount|uyu }}{% if bid.auction.sale_mode == "units" %} / unidad{% endif %}</td>
+                <td>{{ bid.bidder.full_name or bid.bidder.username }}</td>
+                <td><a href="mailto:{{ bid.bidder.email }}">{{ bid.bidder.email }}</a></td>
+                <td>{{ bid.bidder.phone or "—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state mb-0">Todavía no hay ventas realizadas con pujas.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

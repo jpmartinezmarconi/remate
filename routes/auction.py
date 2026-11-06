@@ -60,6 +60,14 @@ def minimum_bid_increment(current_price: Decimal) -> Decimal:
     return Decimal("1000")
 
 
+def _leading_bid(auction_id: int) -> Bid | None:
+    return (
+        Bid.query.filter_by(auction_id=auction_id)
+        .order_by(Bid.amount.desc(), Bid.id.desc())
+        .first()
+    )
+
+
 def _saved_auction_ids(key: str) -> list[int]:
     values = session.get(key, [])
     if not isinstance(values, list):
@@ -229,6 +237,7 @@ def upcoming_auctions():
 @auction_bp.get("/subasta/<int:auction_id>")
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
+    leading_bid = _leading_bid(auction.id) if g.current_user else None
     related_auctions = (
         _related_auctions(auction)
         if request.args.get("bid") == "success"
@@ -268,6 +277,9 @@ def detail(auction_id: int):
         ),
         related_auctions=related_auctions,
         cover_photos=cover_photo_ids(related_auctions),
+        is_current_bidder=(
+            leading_bid is not None and leading_bid.user_id == g.current_user.id
+        ),
     )
 
 
@@ -354,6 +366,18 @@ def place_bid(auction_id: int):
         flash("Esta subasta todavía no comenzó.", "warning")
         return redirect(url_for("auction.detail", auction_id=auction.id))
 
+    previous_leading_bid = _leading_bid(auction.id)
+    if (
+        previous_leading_bid
+        and previous_leading_bid.user_id == g.current_user.id
+    ):
+        flash(
+            "Tu oferta ya es la más alta. Podés volver a ofertar cuando otro "
+            "participante la supere.",
+            "warning",
+        )
+        return redirect(url_for("auction.detail", auction_id=auction.id))
+
     try:
         amount = Decimal(request.form.get("amount", "").replace(",", "."))
         if not amount.is_finite():
@@ -396,11 +420,6 @@ def place_bid(auction_id: int):
             )
             return redirect(url_for("auction.detail", auction_id=auction.id))
 
-    previous_leading_bid = (
-        Bid.query.filter_by(auction_id=auction.id)
-        .order_by(Bid.amount.desc(), Bid.id.desc())
-        .first()
-    )
     bid = Bid(amount=amount, auction=auction, bidder=g.current_user)
     auction.current_price = amount
     db.session.add(bid)

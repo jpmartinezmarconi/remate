@@ -1,8 +1,13 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from email.message import EmailMessage
+from html import escape
 import hmac
 from io import BytesIO
 from functools import wraps
+import smtplib
+import ssl
+from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 
 from flask import (
@@ -21,6 +26,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
+from app.auction_reminders import _mail_configuration
 from app.database import db
 from models.auction import Auction
 from models.auction_group import AuctionGroup
@@ -191,6 +197,118 @@ def bid_history():
         .all()
     )
     return render_template("private_bid_history.html", bids=bids)
+
+
+@private_area_bp.get("/ventas")
+@private_area_required
+def sales():
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    closed_bids = (
+        Bid.query.join(Auction)
+        .options(joinedload(Bid.auction), joinedload(Bid.bidder))
+        .filter(Auction.closes_at <= now)
+        .order_by(
+            Bid.auction_id.asc(),
+            Bid.amount.desc(),
+            Bid.created_at.asc(),
+            Bid.id.asc(),
+        )
+        .all()
+    )
+    winning_bids = {}
+    for bid in closed_bids:
+        winning_bids.setdefault(bid.auction_id, bid)
+    sales = sorted(
+        winning_bids.values(),
+        key=lambda bid: (bid.auction.closes_at, bid.auction.id),
+        reverse=True,
+    )
+    return render_template("private_sales.html", sales=sales)
+
+
+@private_area_bp.post("/ventas/enviar-correo-prueba")
+@private_area_required
+@csrf_protect
+def send_winner_test_email():
+    recipient = "inforemateonline@gmail.com"
+    try:
+        host, port, username, password, sender, base_url = _mail_configuration()
+    except RuntimeError:
+        current_app.logger.exception(
+            "Could not configure the winner test email from environment settings."
+        )
+        flash(
+            "No se pudo preparar el correo de prueba. Revisá la configuración SMTP "
+            "y PUBLIC_BASE_URL en Render.",
+            "danger",
+        )
+        return redirect(url_for("private_area.sales"))
+    auction_url = urljoin(base_url.rstrip("/") + "/", "subastas-activas")
+    amount = "$U 1,500.00"
+    total = "$U 1,800.00"
+    subject = "¡Ganaste la subasta! · Lote de prueba DEMO-001"
+    text_body = (
+        "Hola:\n\n"
+        "¡Felicitaciones! Ganaste la subasta del lote de prueba DEMO-001.\n\n"
+        "Artículo: Ejemplo de lote ganado\n"
+        "Oferta ganadora: $U 1,500.00\n"
+        "Comisión (20%): $U 300.00\n"
+        "Total de ejemplo: $U 1,800.00\n"
+        "Método de pago: todavía no registrado\n\n"
+        f"Podés ver los remates en curso acá: {auction_url}\n\n"
+        "Este es un correo de prueba. No se creó una subasta, puja ni pago real.\n\n"
+        "Remate Martínez"
+    )
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = sender
+    message["To"] = recipient
+    message.set_content(text_body)
+    message.add_alternative(
+        "<!doctype html><html lang=\"es\"><body style=\"margin:0;padding:24px;"
+        "background:#f2f5f8;font-family:Arial,sans-serif;color:#1f2937\">"
+        "<main style=\"max-width:600px;margin:auto;padding:28px;background:#fff;"
+        "border-radius:12px\"><p style=\"margin:0 0 8px;color:#64748b\">"
+        "REMATE MARTÍNEZ</p><h1 style=\"margin:0 0 16px;font-size:24px\">"
+        "¡Ganaste la subasta!</h1><p style=\"display:inline-block;padding:7px 12px;"
+        "border-radius:20px;background:#e8f1fb;color:#064584\"><strong>"
+        "Lote de prueba DEMO-001</strong></p><h2 style=\"font-size:20px\">"
+        "Ejemplo de lote ganado</h2><p>¡Felicitaciones! Tu oferta fue la ganadora.</p>"
+        "<table style=\"width:100%;border-collapse:collapse\">"
+        "<tr><td style=\"padding:8px 0\">Oferta ganadora</td>"
+        f"<td style=\"padding:8px 0;text-align:right\"><strong>{amount}</strong></td></tr>"
+        "<tr><td style=\"padding:8px 0\">Comisión (20%)</td>"
+        "<td style=\"padding:8px 0;text-align:right\">$U 300.00</td></tr>"
+        "<tr><td style=\"padding:8px 0;border-top:1px solid #e5e7eb\">"
+        "<strong>Total de ejemplo</strong></td>"
+        f"<td style=\"padding:8px 0;text-align:right;border-top:1px solid #e5e7eb\">"
+        f"<strong>{total}</strong></td></tr></table>"
+        "<p>Método de pago: todavía no registrado.</p>"
+        f"<p style=\"margin:24px 0\"><a href=\"{escape(auction_url, quote=True)}\" "
+        "style=\"display:inline-block;padding:12px 18px;background:#064584;"
+        "color:white;text-decoration:none;border-radius:6px\">Ver remates en curso</a></p>"
+        "<p style=\"padding:12px;background:#fff8e6;border-radius:6px\">"
+        "<strong>Correo de prueba:</strong> no se creó una subasta, puja ni pago real."
+        "</p><hr style=\"border:0;border-top:1px solid #e5e7eb\">"
+        "<p style=\"margin-bottom:0;color:#64748b\">Remate Martínez</p>"
+        "</main></body></html>",
+        subtype="html",
+    )
+
+    try:
+        with smtplib.SMTP(host, port, timeout=30) as mail_server:
+            mail_server.starttls(context=ssl.create_default_context())
+            mail_server.login(username, password)
+            mail_server.send_message(message)
+    except (OSError, smtplib.SMTPException):
+        current_app.logger.exception("Could not send the winner test email.")
+        flash(
+            "No se pudo enviar el correo de prueba. Revisá la configuración SMTP.",
+            "danger",
+        )
+    else:
+        flash(f"Correo de prueba enviado a {recipient}.", "success")
+    return redirect(url_for("private_area.sales"))
 
 
 @private_area_bp.get("/clientes")

@@ -186,6 +186,11 @@ class PrivateAreaTest(unittest.TestCase):
         response = self.client.get("/area-privada/panel")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.get("/area-privada/historial-pujas").status_code, 302)
+        self.assertEqual(self.client.get("/area-privada/ventas").status_code, 302)
+        self.assertEqual(
+            self.client.post("/area-privada/ventas/enviar-correo-prueba").status_code,
+            302,
+        )
         self.assertEqual(self.client.get("/area-privada/clientes").status_code, 302)
 
         response = self.client.post(
@@ -235,6 +240,92 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn("member@example.test", customer_page)
         self.assertIn("Test Member", customer_page)
         self.assertIn("Código postal", customer_page)
+
+    def test_private_sales_list_closed_auctions_with_winning_bids(self):
+        self.login()
+        self.create_lot("SOLD-01")
+        self.create_lot("ACTIVE-01")
+        self.create_lot("NO-BIDS-01")
+        bidder_id = self.login_user()
+        with self.app.app_context():
+            auctions = {
+                auction.lot_number: auction
+                for auction in Auction.query.all()
+            }
+            other_bidder = User(
+                username="saleschallenger",
+                full_name="Sales Challenger",
+                email="challenger@example.test",
+                phone="099987654",
+                shipping_address="18 de Julio 1000",
+                city="Montevideo",
+                postal_code="11100",
+            )
+            other_bidder.set_password("safe-password")
+            db.session.add(other_bidder)
+            db.session.flush()
+            auctions["SOLD-01"].closes_at = datetime.now(timezone.utc) - timedelta(
+                hours=1
+            )
+            auctions["ACTIVE-01"].current_price = Decimal("200")
+            db.session.add_all(
+                [
+                    Bid(
+                        amount=Decimal("150"),
+                        auction=auctions["SOLD-01"],
+                        user_id=bidder_id,
+                    ),
+                    Bid(
+                        amount=Decimal("200"),
+                        auction=auctions["SOLD-01"],
+                        user_id=other_bidder.id,
+                    ),
+                    Bid(
+                        amount=Decimal("150"),
+                        auction=auctions["ACTIVE-01"],
+                        user_id=bidder_id,
+                    ),
+                ]
+            )
+            db.session.commit()
+
+        page = self.client.get("/area-privada/ventas")
+        self.assertEqual(page.status_code, 200)
+        content = page.get_data(as_text=True)
+        self.assertIn("Ventas realizadas", content)
+        self.assertIn("SOLD-01", content)
+        self.assertIn("Sales Challenger", content)
+        self.assertIn("challenger@example.test", content)
+        self.assertIn("$U 200.00", content)
+        self.assertNotIn("ACTIVE-01", content)
+        self.assertNotIn("NO-BIDS-01", content)
+
+    @patch("routes.private_area.smtplib.SMTP")
+    def test_private_area_can_send_winner_email_preview(self, smtp):
+        self.login()
+        mail_server = smtp.return_value.__enter__.return_value
+
+        response = self.client.post(
+            "/area-privada/ventas/enviar-correo-prueba",
+            data={"csrf_token": self.csrf_token()},
+            follow_redirects=True,
+        )
+
+        self.assertIn("Correo de prueba enviado a inforemateonline@gmail.com", response.get_data(as_text=True))
+        smtp.assert_called_once_with("smtp.example.test", 587, timeout=30)
+        mail_server.starttls.assert_called_once()
+        mail_server.login.assert_called_once_with(
+            "sender@example.test", "test-smtp-password"
+        )
+        message = mail_server.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "inforemateonline@gmail.com")
+        self.assertIn("Ganaste la subasta", message["Subject"])
+        plain_body = message.get_body(preferencelist=("plain",)).get_content()
+        self.assertIn("No se creó una subasta", plain_body)
+        html_body = message.get_body(preferencelist=("html",)).get_content()
+        self.assertIn("¡Ganaste la subasta!", html_body)
+        self.assertIn("DEMO-001", html_body)
+        self.assertIn("$U 1,800.00", html_body)
 
     def test_creates_grouped_unit_lot_with_persistent_photo(self):
         self.login()
@@ -861,8 +952,20 @@ class PrivateAreaTest(unittest.TestCase):
             )
             user.set_password("safe-password")
             db.session.add(user)
+            other_bidder = User(
+                username="otherbidder",
+                full_name="Other Bidder",
+                email="otherbidder@example.test",
+                phone="099123456",
+                shipping_address="18 de Julio 1000",
+                city="Montevideo",
+                postal_code="11100",
+            )
+            other_bidder.set_password("safe-password")
+            db.session.add(other_bidder)
             db.session.commit()
             user_id = user.id
+            other_bidder_id = other_bidder.id
         with self.client.session_transaction() as session:
             session["user_id"] = user_id
 
@@ -878,6 +981,8 @@ class PrivateAreaTest(unittest.TestCase):
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "100"},
         )
+        with self.client.session_transaction() as session:
+            session["user_id"] = other_bidder_id
         too_low = self.client.post(
             f"/subasta/{auction_id}/ofertar",
             data={"csrf_token": self.csrf_token(), "amount": "149"},
@@ -896,6 +1001,8 @@ class PrivateAreaTest(unittest.TestCase):
         )
         self.assertEqual(self.bid_notification.call_count, 2)
         self.assertIn("Oferta: $U 150.00", self.bid_notification.call_args.args[1])
+        with self.client.session_transaction() as session:
+            session["user_id"] = user_id
         detail = self.client.get(f"/subasta/{auction_id}")
         self.assertIn(b"OFERTA ACTUAL", detail.data)
         self.assertIn(b"$U 150.00", detail.data)
@@ -995,35 +1102,69 @@ class PrivateAreaTest(unittest.TestCase):
 
             self.assertIsNotNone(notification.sent_at)
 
-    def test_bidder_does_not_get_outbid_email_for_raising_their_own_bid(self):
+    def test_bidder_cannot_bid_again_until_another_user_outbids_them(self):
         self.login()
         self.create_lot("SELF-BID-01")
         with self.app.app_context():
             auction_id = Auction.query.one().id
-            bidder = User(
-                username="selfbidder",
-                full_name="Self Bidder",
-                email="selfbidder@example.test",
-                phone="099123456",
-                shipping_address="18 de Julio 1000",
-                city="Montevideo",
-                postal_code="11100",
-            )
-            bidder.set_password("safe-password")
-            db.session.add(bidder)
+            bidders = [
+                User(
+                    username=username,
+                    full_name=username,
+                    email=f"{username}@example.test",
+                    phone="099123456",
+                    shipping_address="18 de Julio 1000",
+                    city="Montevideo",
+                    postal_code="11100",
+                )
+                for username in ("selfbidder", "challenger")
+            ]
+            for bidder in bidders:
+                bidder.set_password("safe-password")
+            db.session.add_all(bidders)
             db.session.commit()
-            bidder_id = bidder.id
+            bidder_ids = [bidder.id for bidder in bidders]
         with self.client.session_transaction() as session:
-            session["user_id"] = bidder_id
+            session["user_id"] = bidder_ids[0]
 
-        for amount in ("150", "200"):
-            self.client.post(
-                f"/subasta/{auction_id}/ofertar",
-                data={"csrf_token": self.csrf_token(), "amount": amount},
-            )
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "150"},
+        )
+        blocked_page = self.client.get(f"/subasta/{auction_id}")
+        self.assertIn(b"Tu oferta es la m\xc3\xa1s alta", blocked_page.data)
+        self.assertNotIn(b"data-bid-form", blocked_page.data)
+
+        blocked_bid = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "200"},
+            follow_redirects=True,
+        )
+        self.assertIn(
+            "Podés volver a ofertar cuando otro participante la supere",
+            blocked_bid.get_data(as_text=True),
+        )
+        with self.app.app_context():
+            self.assertEqual(Bid.query.count(), 1)
+
+        with self.client.session_transaction() as session:
+            session["user_id"] = bidder_ids[1]
+        self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "200"},
+        )
+        with self.client.session_transaction() as session:
+            session["user_id"] = bidder_ids[0]
+        allowed_bid = self.client.post(
+            f"/subasta/{auction_id}/ofertar",
+            data={"csrf_token": self.csrf_token(), "amount": "300"},
+            follow_redirects=True,
+        )
+        self.assertIn("¡Oferta registrada!", allowed_bid.get_data(as_text=True))
 
         with self.app.app_context():
-            self.assertEqual(AuctionOutbidNotification.query.count(), 0)
+            self.assertEqual(Bid.query.count(), 3)
+            self.assertEqual(AuctionOutbidNotification.query.count(), 2)
 
     def test_bid_increment_tiers_follow_current_price_thresholds(self):
         self.assertEqual(minimum_bid_increment(Decimal("500")), Decimal("50"))
