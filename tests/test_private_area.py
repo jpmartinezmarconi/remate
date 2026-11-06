@@ -1086,6 +1086,7 @@ class PrivateAreaTest(unittest.TestCase):
             session["user_id"] = other_bidder_id
         offer_page = self.client.get(f"/subasta/{auction_id}").get_data(as_text=True)
         self.assertIn("Ofertar $U 150.00", offer_page)
+        self.assertIn('class="btn btn-auction btn-lg rounded-pill w-100 mt-3" type="submit">Ofertar', offer_page)
         self.assertNotIn('name="amount"', offer_page)
         stale = self.client.post(
             f"/subasta/{auction_id}/ofertar",
