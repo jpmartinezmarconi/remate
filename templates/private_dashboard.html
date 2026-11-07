@@ -117,7 +117,7 @@
 
   <section class="private-panel mt-4">
     <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
-      <div><h2 class="mb-1">Grupos y lotes</h2><p class="text-secondary mb-0">Los lotes activos aparecen en “Subastas activas”. No se pueden borrar lotes con pujas o pagos registrados.</p></div>
+      <div><h2 class="mb-1">Grupos y lotes</h2><p class="text-secondary mb-0">Los lotes activos aparecen en “Subastas activas”. Al eliminar un lote también se elimina su historial de pujas y pagos.</p></div>
       <span class="auction-count">{{ auctions|length }} lote{{ '' if auctions|length == 1 else 's' }}</span>
     </div>
     {% if groups %}

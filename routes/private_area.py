@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from html import escape
+import csv
 import hmac
 import re
-from io import BytesIO
+from io import BytesIO, StringIO
 from functools import wraps
 import smtplib
 import ssl
@@ -22,7 +23,7 @@ from flask import (
     session,
     url_for,
 )
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
@@ -30,12 +31,17 @@ from app.auction_reminders import _mail_configuration, send_due_auction_outbid_n
 from app.database import db
 from app.mail_message import transactional_message
 from models.auction import Auction
+from models.auction_closing_reminder import AuctionClosingReminder
+from models.auction_completion_notification import AuctionCompletionNotification
+from models.auction_favorite import AuctionFavorite
 from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
+from models.auction_outbid_notification import AuctionOutbidNotification
 from models.auction_payment import AuctionPayment
 from models.bid import Bid
 from models.user import User
 from .security import csrf_protect
+from .account import _winning_amount
 
 
 private_area_bp = Blueprint("private_area", __name__, url_prefix="/area-privada")
@@ -203,11 +209,22 @@ def bid_history():
 @private_area_bp.get("/ventas")
 @private_area_required
 def sales():
+    sales = _winning_sales()
+    payments = _sale_payments([bid.auction_id for bid in sales])
+    return render_template("private_sales.html", sales=sales, payments=payments)
+
+
+def _winning_sales(auction_ids: list[int] | None = None) -> list[Bid]:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    closed_bids = (
+    query = (
         Bid.query.join(Auction)
         .options(joinedload(Bid.auction), joinedload(Bid.bidder))
         .filter(Auction.closes_at <= now)
+    )
+    if auction_ids is not None:
+        query = query.filter(Auction.id.in_(auction_ids))
+    closed_bids = (
+        query
         .order_by(
             Bid.auction_id.asc(),
             Bid.amount.desc(),
@@ -219,12 +236,127 @@ def sales():
     winning_bids = {}
     for bid in closed_bids:
         winning_bids.setdefault(bid.auction_id, bid)
-    sales = sorted(
+    return sorted(
         winning_bids.values(),
         key=lambda bid: (bid.auction.closes_at, bid.auction.id),
         reverse=True,
     )
-    return render_template("private_sales.html", sales=sales)
+
+
+def _sale_payments(auction_ids: list[int]) -> dict[int, AuctionPayment]:
+    return {
+        payment.auction_id: payment
+        for payment in AuctionPayment.query.filter(
+            AuctionPayment.auction_id.in_(auction_ids)
+        ).all()
+    }
+
+
+def _csv_text(value: str | None) -> str:
+    text = value or ""
+    if text.startswith(("\t", "\r", "\n")) or text.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
+@private_area_bp.post("/ventas/exportar")
+@private_area_required
+@csrf_protect
+def export_sales():
+    try:
+        auction_ids = list(dict.fromkeys(int(value) for value in request.form.getlist("auction_ids")))
+    except ValueError:
+        flash("La selección de ventas no es válida.", "danger")
+        return redirect(url_for("private_area.sales"))
+    if not auction_ids or any(auction_id <= 0 for auction_id in auction_ids):
+        flash("Seleccioná uno o más lotes vendidos.", "warning")
+        return redirect(url_for("private_area.sales"))
+    action = request.form.get("action")
+    if action not in {"print", "download"}:
+        abort(400)
+    sales = _winning_sales(auction_ids)
+    if len(sales) != len(auction_ids):
+        flash("La selección contiene lotes que ya no están vendidos o no existen.", "danger")
+        return redirect(url_for("private_area.sales"))
+    payments = _sale_payments(auction_ids)
+    totals = {}
+    for bid in sales:
+        auction = bid.auction
+        multiplier = auction.quantity if auction.sale_mode == "units" else 1
+        totals[auction.id] = (
+            Decimal(bid.amount) * multiplier
+            * (Decimal("1") + Decimal(auction.commission_percent) / Decimal("100"))
+        ).quantize(Decimal("0.01"))
+
+    if action == "print":
+        response = current_app.make_response(render_template(
+            "private_sales_print.html", sales=sales, payments=payments, totals=totals
+        ))
+    else:
+        output = StringIO(newline="")
+        writer = csv.writer(output, delimiter=";")
+        writer.writerow(["Cierre (Uruguay)", "Grupo", "Lote", "Artículo", "Modalidad",
+                         "Cantidad", "Oferta ganadora (UYU)", "Comisión (%)",
+                         "Total con comisión (UYU)", "Adjudicado a", "Correo", "Teléfono", "Pago"])
+        for bid in sales:
+            auction = bid.auction
+            payment = payments.get(auction.id)
+            writer.writerow([
+                auction.closes_at_montevideo.strftime("%d/%m/%Y %H:%M"),
+                _csv_text(auction.group_name), _csv_text(auction.display_lot_number),
+                _csv_text(auction.title), "Por unidades" if auction.sale_mode == "units" else "Lote completo",
+                auction.quantity, bid.amount, auction.commission_percent, totals[auction.id],
+                _csv_text(bid.bidder.full_name or bid.bidder.username),
+                _csv_text(bid.bidder.email), _csv_text(bid.bidder.phone),
+                "Pagado" if payment and payment.status == "paid" else "Pendiente",
+            ])
+        response = send_file(
+            BytesIO(output.getvalue().encode("utf-8-sig")), mimetype="text/csv",
+            as_attachment=True, download_name="ventas.csv",
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@private_area_bp.post("/ventas/<int:auction_id>/pago")
+@private_area_required
+@csrf_protect
+def update_sale_payment(auction_id: int):
+    auction = db.session.execute(
+        db.select(Auction).where(Auction.id == auction_id).with_for_update()
+    ).scalar_one_or_none()
+    if auction is None:
+        abort(404)
+    closes_at = auction.closes_at
+    if closes_at.tzinfo is None:
+        closes_at = closes_at.replace(tzinfo=timezone.utc)
+    if closes_at > datetime.now(timezone.utc):
+        abort(404)
+    winner = (
+        Bid.query.filter_by(auction_id=auction.id)
+        .order_by(Bid.amount.desc(), Bid.created_at.asc(), Bid.id.asc())
+        .first()
+    )
+    if winner is None:
+        abort(404)
+    status = request.form.get("status")
+    if status not in {"paid", "pending"}:
+        abort(400)
+    payment = AuctionPayment.query.filter_by(auction_id=auction.id).first()
+    if payment is None:
+        payment = AuctionPayment(
+            auction=auction,
+            user_id=winner.user_id,
+            method="not_specified",
+            amount=_winning_amount(auction),
+            status=status,
+        )
+        db.session.add(payment)
+    else:
+        payment.status = status
+    db.session.commit()
+    flash("El estado de pago se actualizó correctamente.", "success")
+    return redirect(url_for("private_area.sales"))
 
 
 @private_area_bp.post("/ventas/reintentar-avisos")
@@ -817,19 +949,43 @@ def _lots_with_history(auction_ids: list[int]) -> list[Auction]:
     return [auction for auction in Auction.query.filter(Auction.id.in_(blocked_ids)).all()]
 
 
-def _delete_auctions_without_history(auctions: list[Auction]) -> bool:
-    blocked_lots = _lots_with_history([auction.id for auction in auctions])
-    if blocked_lots:
-        lot_numbers = ", ".join(auction.display_lot_number for auction in blocked_lots)
-        flash(
-            "No se pueden eliminar lotes que ya tienen pujas o pagos registrados. "
-            f"Revisá: {lot_numbers}.",
-            "danger",
+def _delete_auctions(auctions: list[Auction]) -> None:
+    auction_ids = [auction.id for auction in auctions]
+    bid_ids = db.select(Bid.id).where(Bid.auction_id.in_(auction_ids))
+    db.session.execute(
+        db.delete(AuctionOutbidNotification).where(
+            or_(AuctionOutbidNotification.outbid_bid_id.in_(bid_ids),
+                AuctionOutbidNotification.replacement_bid_id.in_(bid_ids))
         )
-        return False
+    )
+    for model in (AuctionPayment, AuctionFavorite, AuctionClosingReminder,
+                  AuctionCompletionNotification):
+        db.session.execute(db.delete(model).where(model.auction_id.in_(auction_ids)))
     for auction in auctions:
         db.session.delete(auction)
-    return True
+
+
+def _deletion_confirmation(auctions: list[Auction], group: AuctionGroup, *, whole_group: bool):
+    history = _lots_with_history([auction.id for auction in auctions])
+    confirmed_ids = set(request.form.getlist("confirmed_auction_ids"))
+    current_ids = {str(auction.id) for auction in auctions}
+    is_confirmed = request.form.get("confirm_delete") == "1"
+    if (history and not is_confirmed) or (is_confirmed and confirmed_ids != current_ids):
+        payments = {
+            payment.auction_id: payment
+            for payment in AuctionPayment.query.filter(
+                AuctionPayment.auction_id.in_([auction.id for auction in auctions])
+            ).all()
+        }
+        now = datetime.now(timezone.utc)
+        unpaid = [auction for auction in history
+                  if (auction.closes_at if auction.closes_at.tzinfo is not None
+                      else auction.closes_at.replace(tzinfo=timezone.utc)) <= now
+                  and auction.bid_count and
+                  (auction.id not in payments or payments[auction.id].status != "paid")]
+        return render_template("private_delete_confirm.html", auctions=auctions,
+                               group=group, whole_group=whole_group, unpaid=unpaid)
+    return None
 
 
 @private_area_bp.post("/grupos/<int:group_id>/eliminar")
@@ -849,9 +1005,10 @@ def delete_group(group_id: int):
         .with_for_update()
         .all()
     )
-    if not _delete_auctions_without_history(auctions):
-        db.session.rollback()
-        return redirect(url_for("private_area.dashboard"))
+    confirmation = _deletion_confirmation(auctions, group, whole_group=True)
+    if confirmation is not None:
+        return confirmation
+    _delete_auctions(auctions)
     group_name = group.name
     db.session.delete(group)
     db.session.commit()
@@ -887,9 +1044,10 @@ def delete_group_auctions(group_id: int):
     if len(auctions) != len(auction_ids):
         flash("La selección contiene lotes que no pertenecen a este grupo.", "danger")
         return redirect(url_for("private_area.dashboard"))
-    if not _delete_auctions_without_history(auctions):
-        db.session.rollback()
-        return redirect(url_for("private_area.dashboard"))
+    confirmation = _deletion_confirmation(auctions, group, whole_group=False)
+    if confirmation is not None:
+        return confirmation
+    _delete_auctions(auctions)
     db.session.commit()
     flash(f"Se eliminaron {len(auctions)} lote(s) del grupo «{group.name}».", "success")
     return redirect(url_for("private_area.dashboard"))

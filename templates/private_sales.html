@@ -44,21 +44,49 @@
       <span class="auction-count">{{ sales|length }} venta{{ '' if sales|length == 1 else 's' }}</span>
     </div>
     {% if sales %}
+      <form id="export-sales" method="post" action="{{ url_for('private_area.export_sales') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <button class="btn btn-outline-primary" type="submit" name="action" value="print">Imprimir seleccionados</button>
+          <button class="btn btn-auction" type="submit" name="action" value="download">Descargar seleccionados (CSV)</button>
+        </div>
+      </form>
+      <p class="text-secondary small">Seleccioná uno o varios lotes. La vista de impresión también permite guardarlos como PDF.</p>
       <div class="table-responsive">
         <table class="table align-middle">
           <thead><tr>
+            <th><input class="form-check-input" id="select-all-sales" type="checkbox" aria-label="Seleccionar todas las ventas"></th>
             <th>Fecha de cierre</th><th>Lote</th><th>Oferta ganadora</th>
-            <th>Adjudicado a</th><th>Correo</th><th>Teléfono</th>
+            <th>Adjudicado a</th><th>Correo</th><th>Teléfono</th><th>Pago</th><th>Exportar</th>
           </tr></thead>
           <tbody>
             {% for bid in sales %}
               <tr>
+                <td><input class="form-check-input sale-selection" type="checkbox" name="auction_ids" value="{{ bid.auction.id }}" form="export-sales" aria-label="Seleccionar lote {{ bid.auction.display_lot_number }}"></td>
                 <td>{{ bid.auction.closes_at.strftime("%d/%m/%Y %H:%M") }} UTC</td>
                 <td><a href="{{ url_for('auction.detail', auction_id=bid.auction.id) }}">Nº {{ bid.auction.display_lot_number }} · {{ bid.auction.title }}</a></td>
                 <td class="text-nowrap">{{ bid.amount|uyu }}{% if bid.auction.sale_mode == "units" %} / unidad{% endif %}</td>
                 <td>{{ bid.bidder.full_name or bid.bidder.username }}</td>
                 <td><a href="mailto:{{ bid.bidder.email }}">{{ bid.bidder.email }}</a></td>
                 <td>{{ bid.bidder.phone or "—" }}</td>
+                <td>
+                  {% set payment = payments.get(bid.auction.id) %}
+                  {% set paid = payment and payment.status == 'paid' %}
+                  <span class="badge {{ 'text-bg-success' if paid else 'text-bg-warning' }}">{{ 'Pagado' if paid else 'Pendiente' }}</span>
+                  <form method="post" action="{{ url_for('private_area.update_sale_payment', auction_id=bid.auction.id) }}" class="mt-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="status" value="{{ 'pending' if paid else 'paid' }}">
+                    <button class="btn btn-sm btn-outline-primary" type="submit">{{ 'Marcar como pendiente' if paid else 'Marcar como pagado' }}</button>
+                  </form>
+                </td>
+                <td>
+                  <form method="post" action="{{ url_for('private_area.export_sales') }}" class="d-flex flex-wrap gap-1">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="auction_ids" value="{{ bid.auction.id }}">
+                    <button class="btn btn-sm btn-outline-primary" type="submit" name="action" value="print" aria-label="Imprimir lote {{ bid.auction.display_lot_number }}">Imprimir</button>
+                    <button class="btn btn-sm btn-outline-primary" type="submit" name="action" value="download" aria-label="Descargar lote {{ bid.auction.display_lot_number }} en CSV">Descargar</button>
+                  </form>
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -69,4 +97,20 @@
     {% endif %}
   </section>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+  const selectAllSales = document.getElementById("select-all-sales");
+  if (selectAllSales) {
+    const saleSelections = Array.from(document.querySelectorAll(".sale-selection"));
+    selectAllSales.addEventListener("change", () => {
+      saleSelections.forEach((selection) => { selection.checked = selectAllSales.checked; });
+    });
+    saleSelections.forEach((selection) => selection.addEventListener("change", () => {
+      const selectedCount = saleSelections.filter((item) => item.checked).length;
+      selectAllSales.checked = selectedCount === saleSelections.length;
+      selectAllSales.indeterminate = selectedCount > 0 && selectedCount < saleSelections.length;
+    }));
+  }
+</script>
 {% endblock %}

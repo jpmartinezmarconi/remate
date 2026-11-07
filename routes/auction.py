@@ -239,6 +239,14 @@ def upcoming_auctions():
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
     leading_bid = _leading_bid(auction.id)
+    has_been_outbid = bool(
+        g.current_user
+        and (leading_bid is None or leading_bid.user_id != g.current_user.id)
+        and Bid.query.filter_by(
+            auction_id=auction.id,
+            user_id=g.current_user.id,
+        ).first()
+    )
     related_auctions = (
         _related_auctions(auction)
         if request.args.get("bid") == "success"
@@ -282,6 +290,7 @@ def detail(auction_id: int):
         is_current_bidder=(
             leading_bid is not None and leading_bid.user_id == g.current_user.id
         ),
+        has_been_outbid=has_been_outbid,
     )
 
 

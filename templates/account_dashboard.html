@@ -42,9 +42,11 @@
                 <td>{{ auction.current_price|uyu }}{% if auction.sale_mode == "units" %} / unidad × {{ auction.quantity }}{% endif %}</td>
                 <td><strong>{{ payment_totals[auction.id]|uyu }}</strong></td>
                 <td>
-                  {% if payment and payment.status == "pending" %}
+                  {% if payment and payment.status == "paid" %}
+                    <span class="badge text-bg-success">Pagado</span>
+                  {% elif payment and payment.status == "pending" %}
                     <span class="badge text-bg-warning">Pendiente</span>
-                    <a class="btn btn-sm btn-outline-primary ms-1" href="{{ url_for('account.pay_for_auction', auction_id=auction.id) }}">Cambiar método</a>
+                    <a class="btn btn-sm btn-outline-primary ms-1" href="{{ url_for('account.pay_for_auction', auction_id=auction.id) }}">{{ 'Elegir cómo pagar' if payment.method == 'not_specified' else 'Cambiar método' }}</a>
                   {% else %}
                     <a class="btn btn-sm btn-auction" href="{{ url_for('account.pay_for_auction', auction_id=auction.id) }}">Elegir cómo pagar</a>
                   {% endif %}

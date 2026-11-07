@@ -175,6 +175,12 @@ def update_profile():
 @csrf_protect
 def pay_for_auction(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
+    if request.method == "POST":
+        auction = db.session.execute(
+            db.select(Auction).where(Auction.id == auction_id).with_for_update()
+        ).scalar_one_or_none()
+        if auction is None:
+            abort(404)
     closes_at = auction.closes_at
     if closes_at.tzinfo is None:
         closes_at = closes_at.replace(tzinfo=timezone.utc)
@@ -192,6 +198,9 @@ def pay_for_auction(auction_id: int):
         return redirect(url_for("account.dashboard"))
 
     payment = AuctionPayment.query.filter_by(auction_id=auction.id).first()
+    if payment and payment.status == "paid":
+        flash("Este lote ya figura como pagado.", "info")
+        return redirect(url_for("account.dashboard"))
     if request.method == "POST":
         is_new_payment = payment is None
         method = request.form.get("method", "")

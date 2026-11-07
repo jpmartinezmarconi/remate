@@ -1,6 +1,7 @@
-from io import BytesIO
+from io import BytesIO, StringIO
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import csv
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -17,6 +18,7 @@ from app.database import db
 from routes.auction import minimum_bid_increment
 from models.auction import Auction
 from models.auction_closing_reminder import AuctionClosingReminder
+from models.auction_completion_notification import AuctionCompletionNotification
 from models.auction_favorite import AuctionFavorite
 from models.auction_group import AuctionGroup
 from models.auction_image import AuctionImage
@@ -286,6 +288,84 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn("member@example.test", customer_page)
         self.assertIn("Test Member", customer_page)
         self.assertIn("Código postal", customer_page)
+
+    def test_export_sales_individually_and_in_bulk(self):
+        self.login()
+        self.create_lot("PRINT-ONE")
+        self.create_lot("PRINT-TWO", sale_mode="lot")
+        self.create_lot("NOT-SOLD")
+        winner_id = self.login_user("export-winner")
+        with self.app.app_context():
+            auctions = {auction.lot_number: auction for auction in Auction.query.all()}
+            first, second, active = (auctions["PRINT-ONE"], auctions["PRINT-TWO"], auctions["NOT-SOLD"])
+            first.title = "=1+1"
+            first.closes_at = second.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            ids = [first.id, second.id]
+            active_id = active.id
+            db.session.add_all([
+                Bid(amount=100, auction=first, user_id=winner_id),
+                Bid(amount=150, auction=first, user_id=winner_id),
+                Bid(amount=200, auction=second, user_id=winner_id),
+                Bid(amount=300, auction=active, user_id=winner_id),
+                AuctionPayment(auction=second, user_id=winner_id, method="mi_dinero", amount=240, status="paid"),
+            ])
+            db.session.commit()
+        path = "/area-privada/ventas/exportar"
+        page = self.client.get("/area-privada/ventas").get_data(as_text=True)
+        self.assertIn("Imprimir seleccionados", page)
+        self.assertIn("Descargar seleccionados (CSV)", page)
+        self.assertIn('aria-label="Seleccionar todas las ventas"', page)
+        for auction_id in ids:
+            self.assertIn(f'value="{auction_id}" form="export-sales"', page)
+        for selected_ids in ([ids[0]], ids):
+            response = self.client.post(path, data={"csrf_token": self.csrf_token(),
+                "auction_ids": [str(value) for value in selected_ids], "action": "print"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            content = response.get_data(as_text=True)
+            self.assertIn("PRINT-ONE", content)
+            self.assertEqual("PRINT-TWO" in content, len(selected_ids) == 2)
+            self.assertNotIn("NOT-SOLD", content)
+            self.assertIn("$U 540.00", content)
+            self.assertIn("Test Member", content)
+            self.assertIn("Pendiente", content)
+            self.assertIn("guardar como PDF", content)
+            if len(selected_ids) == 2:
+                self.assertIn("$U 240.00", content)
+                self.assertIn("Pagado", content)
+
+        response = self.client.post(path, data={"csrf_token": self.csrf_token(),
+            "auction_ids": [str(value) for value in ids], "action": "download"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment;", response.headers["Content-Disposition"])
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
+        self.assertTrue(response.data.startswith(b"\xef\xbb\xbf"))
+        rows = list(csv.DictReader(StringIO(response.data.decode("utf-8-sig")), delimiter=";"))
+        self.assertEqual(len(rows), 2)
+        rows_by_lot = {row["Lote"]: row for row in rows}
+        self.assertEqual(rows_by_lot["PRINT-ONE"]["Artículo"], "'=1+1")
+        self.assertEqual(rows_by_lot["PRINT-ONE"]["Oferta ganadora (UYU)"], "150.00")
+        self.assertEqual(rows_by_lot["PRINT-ONE"]["Total con comisión (UYU)"], "540.00")
+        self.assertEqual(rows_by_lot["PRINT-TWO"]["Total con comisión (UYU)"], "240.00")
+        self.assertEqual(rows_by_lot["PRINT-TWO"]["Pago"], "Pagado")
+        self.assertEqual(rows_by_lot["PRINT-ONE"]["Pago"], "Pendiente")
+        single = self.client.post(path, data={"csrf_token": self.csrf_token(),
+            "auction_ids": str(ids[1]), "action": "download"})
+        self.assertNotIn("PRINT-ONE", single.data.decode("utf-8-sig"))
+        self.assertIn("PRINT-TWO", single.data.decode("utf-8-sig"))
+
+        for invalid_ids in ([], ["abc"], ["-1"], [str(active_id)], [str(ids[0]), str(active_id)], ["99999"]):
+            response = self.client.post(path, data={"csrf_token": self.csrf_token(),
+                "auction_ids": invalid_ids, "action": "download"})
+            self.assertEqual(response.status_code, 302)
+            self.assertNotIn("attachment", response.headers.get("Content-Disposition", ""))
+        self.assertEqual(self.client.post(path, data={"auction_ids": str(ids[0]), "action": "download"}).status_code, 400)
+        self.assertEqual(self.client.post(path, data={"csrf_token": self.csrf_token(),
+            "auction_ids": str(ids[0]), "action": "invalid"}).status_code, 400)
+        with self.client.session_transaction() as session:
+            session.pop("private_area_authenticated")
+        self.assertEqual(self.client.post(path, data={"csrf_token": self.csrf_token(),
+            "auction_ids": str(ids[0]), "action": "download"}).status_code, 302)
 
     def test_private_sales_list_closed_auctions_with_winning_bids(self):
         self.login()
@@ -814,13 +894,14 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(Auction.query.count(), 0)
             self.assertEqual(AuctionGroup.query.count(), 0)
 
-    def test_group_and_lot_deletion_preserve_lots_with_bids(self):
+    def test_group_and_lot_deletion_requires_confirmation_for_unpaid_sale(self):
         self.login()
         self.create_lot("KEEP-01")
         group_id = self.created_groups["Colección"]
         with self.app.app_context():
             auction = Auction.query.one()
             auction_id = auction.id
+            auction.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
             bidder = User(username="bidder", email="bidder@example.test")
             bidder.set_password("safe-password")
             db.session.add(bidder)
@@ -833,16 +914,138 @@ class PrivateAreaTest(unittest.TestCase):
             data={"csrf_token": self.csrf_token(), "auction_ids": [str(auction_id)]},
             follow_redirects=True,
         )
-        self.assertIn("no se pueden eliminar lotes", response.get_data(as_text=True).lower())
+        self.assertIn("Este lote aún no se ha pagado", response.get_data(as_text=True))
         response = self.client.post(
             f"/area-privada/grupos/{group_id}/eliminar",
             data={"csrf_token": self.csrf_token()},
             follow_redirects=True,
         )
-        self.assertIn("no se pueden eliminar lotes", response.get_data(as_text=True).lower())
+        self.assertIn("Este lote aún no se ha pagado", response.get_data(as_text=True))
         with self.app.app_context():
             self.assertEqual(Auction.query.count(), 1)
             self.assertEqual(Bid.query.count(), 1)
+
+        response = self.client.post(
+            f"/area-privada/grupos/{group_id}/eliminar",
+            data={"csrf_token": self.csrf_token(), "confirm_delete": "1",
+                  "confirmed_auction_ids": [str(auction_id)]},
+            follow_redirects=True,
+        )
+        self.assertIn("Se eliminó el grupo", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 0)
+            self.assertEqual(Bid.query.count(), 0)
+
+    def test_delete_paid_sale_removes_related_records_with_foreign_keys(self):
+        self.login()
+        self.create_lot("DELETE-PAID")
+        user_id = self.login_user("delete-winner")
+        group_id = self.created_groups["Colección"]
+        with self.app.app_context():
+            db.session.execute(db.text("PRAGMA foreign_keys=ON"))
+            auction = Auction.query.one()
+            auction_id = auction.id
+            auction.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            bid1 = Bid(amount=100, auction=auction, user_id=user_id)
+            bid2 = Bid(amount=150, auction=auction, user_id=user_id)
+            db.session.add_all([bid1, bid2])
+            db.session.flush()
+            db.session.add_all([
+                AuctionPayment(auction=auction, user_id=user_id, method="mi_dinero", status="paid", amount=540),
+                AuctionFavorite(auction_id=auction_id, user_id=user_id),
+                AuctionClosingReminder(auction_id=auction_id, user_id=user_id),
+                AuctionCompletionNotification(auction_id=auction_id),
+                AuctionReminder(auction=auction, user_id=user_id),
+                AuctionOutbidNotification(outbid_bid_id=bid1.id, replacement_bid_id=bid2.id),
+            ])
+            db.session.commit()
+        path = f"/area-privada/grupos/{group_id}/lotes/eliminar"
+        response = self.client.post(path, data={"csrf_token": self.csrf_token(), "auction_ids": [str(auction_id)]})
+        self.assertIn("Confirmar eliminación", response.get_data(as_text=True))
+        self.assertNotIn("aún no se ha pagado", response.get_data(as_text=True))
+        response = self.client.post(path, data={"csrf_token": self.csrf_token(),
+            "auction_ids": [str(auction_id)], "confirmed_auction_ids": [str(auction_id)],
+            "confirm_delete": "1"}, follow_redirects=True)
+        self.assertIn("Se eliminaron 1 lote(s)", response.get_data(as_text=True))
+        with self.app.app_context():
+            for model in (Auction, Bid, AuctionPayment, AuctionFavorite, AuctionClosingReminder,
+                          AuctionCompletionNotification, AuctionReminder, AuctionOutbidNotification):
+                self.assertEqual(model.query.count(), 0, model.__name__)
+            self.assertIsNotNone(db.session.get(User, user_id))
+
+    def test_sales_payment_can_be_confirmed_and_reverted(self):
+        self.login()
+        self.create_lot("PAY-ADMIN")
+        winner_id = self.login_user("admin-winner")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            auction.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            auction.current_price = 150
+            db.session.add(Bid(amount=150, auction=auction, user_id=winner_id))
+            db.session.commit()
+        path = f"/area-privada/ventas/{auction_id}/pago"
+        page = self.client.get("/area-privada/ventas").get_data(as_text=True)
+        self.assertIn("Marcar como pagado", page)
+        self.assertEqual(self.client.post(path, data={"status": "paid"}).status_code, 400)
+        self.assertEqual(self.client.post(path, data={"csrf_token": self.csrf_token(), "status": "invalid"}).status_code, 400)
+        self.client.post(path, data={"csrf_token": self.csrf_token(), "status": "paid"})
+        with self.app.app_context():
+            payment = AuctionPayment.query.one()
+            self.assertEqual((payment.status, payment.user_id, payment.method, payment.amount),
+                             ("paid", winner_id, "not_specified", Decimal("540.00")))
+        self.assertIn("Marcar como pendiente", self.client.get("/area-privada/ventas").get_data(as_text=True))
+        self.assertIn("Pagado", self.client.get("/cuenta").get_data(as_text=True))
+        response = self.client.post(f"/cuenta/subasta/{auction_id}/pagar",
+                                    data={"csrf_token": self.csrf_token(), "method": "mi_dinero"})
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(AuctionPayment.query.one().status, "paid")
+        self.client.post(path, data={"csrf_token": self.csrf_token(), "status": "pending"})
+        with self.app.app_context():
+            self.assertEqual(AuctionPayment.query.one().status, "pending")
+        self.assertIn("Elegir cómo pagar", self.client.get("/cuenta").get_data(as_text=True))
+
+    def test_existing_payment_method_is_preserved_when_marked_paid(self):
+        self.login()
+        self.create_lot("PAY-EXISTING")
+        winner_id = self.login_user("existing-winner")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            auction.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            db.session.add_all([
+                Bid(amount=150, auction=auction, user_id=winner_id),
+                AuctionPayment(auction=auction, user_id=winner_id, method="mi_dinero",
+                               amount=540, status="pending"),
+            ])
+            db.session.commit()
+        self.client.post(f"/area-privada/ventas/{auction_id}/pago",
+                         data={"csrf_token": self.csrf_token(), "status": "paid"})
+        with self.app.app_context():
+            payment = AuctionPayment.query.one()
+            self.assertEqual((payment.method, payment.status), ("mi_dinero", "paid"))
+
+    def test_group_delete_reconfirms_if_lots_change(self):
+        self.login()
+        self.create_lot("GROUP-OLD")
+        group_id = self.created_groups["Colección"]
+        user_id = self.login_user("group-winner")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            auction.closes_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+            db.session.add(Bid(amount=150, auction=auction, user_id=user_id))
+            db.session.commit()
+        path = f"/area-privada/grupos/{group_id}/eliminar"
+        response = self.client.post(path, data={"csrf_token": self.csrf_token()})
+        self.assertIn("Este lote aún no se ha pagado", response.get_data(as_text=True))
+        self.create_lot("GROUP-NEW")
+        response = self.client.post(path, data={"csrf_token": self.csrf_token(),
+            "confirm_delete": "1", "confirmed_auction_ids": [str(auction_id)]})
+        self.assertIn("GROUP-NEW", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 2)
 
     def test_only_five_active_lots_per_group_can_be_featured(self):
         self.login()
@@ -1111,6 +1314,9 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b"data-auction-countdown", detail.data)
         self.assertIn(b"data-bid-form", detail.data)
         self.assertIn(b"auction-countdown.js", detail.data)
+        self.assertIn("Superaron tu oferta", detail.get_data(as_text=True))
+        self.assertNotIn("Últimas ofertas", detail.get_data(as_text=True))
+        self.assertNotIn("otherbidder", detail.get_data(as_text=True))
 
     def test_automatic_bid_rejects_outdated_bid_and_applies_tiers(self):
         self.login()

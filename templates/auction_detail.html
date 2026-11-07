@@ -72,6 +72,7 @@
       <div class="closing-box mt-3"><span>FECHA DE CIERRE (HORA DE URUGUAY)</span><strong>{{ auction.closes_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</strong></div>
       {% if auction.is_active %}
         {% if current_user %}
+          {% if has_been_outbid %}<div class="alert alert-warning mt-4 mb-0">Superaron tu oferta. Ya no estás ganando.</div>{% endif %}
           {% if is_current_bidder %}
             <div class="alert alert-info mt-4 mb-0">Tu oferta es la más alta. Podés volver a ofertar cuando otro participante la supere.</div>
           {% elif auction.bid_count %}
@@ -93,7 +94,6 @@
       <div class="seller-note mt-4">Remate Martínez Online · Una tradición uruguaya.</div>
     </aside></div>
   </div>
-  {% if auction.bids %}<div class="mt-5"><h2 class="h4">Últimas ofertas</h2><div class="list-group list-group-flush bid-list">{% for bid in auction.bids|sort(attribute='created_at', reverse=true) %}<div class="list-group-item d-flex justify-content-between"><span>{{ bid.bidder.username }}</span><strong>{{ bid.amount|uyu }}</strong></div>{% endfor %}</div></div>{% endif %}
   {% if related_auctions %}
     <section class="mt-5" aria-labelledby="related-auctions-title">
       <div class="section-heading"><div><span class="section-kicker">SEGUIR EXPLORANDO</span><h2 id="related-auctions-title">Artículos relacionados</h2></div></div>

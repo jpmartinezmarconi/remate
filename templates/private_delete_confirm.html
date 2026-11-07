@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Confirmar eliminación · Área privada{% endblock %}
+{% block content %}
+<section class="container private-page">
+  <div class="private-header"><div><span class="section-kicker">ADMINISTRACIÓN</span><h1>Confirmar eliminación</h1></div></div>
+  <section class="private-panel">
+    {% if unpaid %}
+      <div class="alert alert-warning" role="alert">
+        {% if unpaid|length == 1 %}Este lote aún no se ha pagado. ¿Está seguro de que quiere eliminarlo?
+        {% else %}Hay lotes que aún no se han pagado. ¿Está seguro de que quiere eliminarlos?{% endif %}
+        <ul class="mb-0">{% for auction in unpaid %}<li>{{ auction.display_lot_number }} · {{ auction.title }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+    <p>Se eliminarán definitivamente {% if whole_group %}el grupo «{{ group.name }}» y {% endif %}los siguientes lotes y todos sus registros asociados, incluidos pujas, pagos y avisos. Esta acción no se puede deshacer.</p>
+    <ul>{% for auction in auctions %}<li>{{ auction.display_lot_number }} · {{ auction.title }}</li>{% endfor %}</ul>
+    <form method="post" action="{{ url_for('private_area.delete_group', group_id=group.id) if whole_group else url_for('private_area.delete_group_auctions', group_id=group.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="confirm_delete" value="1">
+      {% for auction in auctions %}
+        <input type="hidden" name="confirmed_auction_ids" value="{{ auction.id }}">
+        {% if not whole_group %}<input type="hidden" name="auction_ids" value="{{ auction.id }}">{% endif %}
+      {% endfor %}
+      <button class="btn btn-danger" type="submit">Sí, eliminar definitivamente</button>
+      <a class="btn btn-outline-primary" href="{{ url_for('private_area.dashboard') }}">Cancelar</a>
+    </form>
+  </section>
+</section>
+{% endblock %}
