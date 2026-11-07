@@ -74,6 +74,21 @@ class TelegramBotTest(unittest.TestCase):
             headers={"X-Telegram-Bot-Api-Secret-Token": secret},
         )
 
+    def test_homepage_promotes_telegram_bot_and_outbid_alerts(self):
+        response = self.client.get("/")
+        page = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        telegram_section = page.index('class="container telegram-section"')
+        trust_strip = page.index('class="trust-strip"')
+        reminder = page.index('class="container outbid-telegram-reminder"')
+        self.assertLess(telegram_section, trust_strip)
+        self.assertGreater(reminder, telegram_section)
+        self.assertIn('src="/static/telegram-qr.svg"', page)
+        self.assertIn('href="https://t.me/rematemartinezbot"', page)
+        self.assertIn("Si quieres que te avisemos si han superado tu puja", page)
+        self.assertIn("Avisos de pujas por Telegram", page)
+
     @patch("routes.telegram_bot.urlopen")
     def test_start_replies_and_links_to_site(self, mocked_urlopen):
         mocked_urlopen.return_value.__enter__.return_value.read.return_value = (
