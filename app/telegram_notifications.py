@@ -14,9 +14,11 @@ class TelegramNotificationError(RuntimeError):
     pass
 
 
-def send_telegram_notification(text: str) -> bool:
+def send_telegram_notification(
+    text: str, chat_id: int | str | None = None
+) -> bool:
     token = current_app.config.get("TELEGRAM_BOT_TOKEN")
-    chat_id = current_app.config.get("TELEGRAM_NOTIFICATION_CHAT_ID")
+    chat_id = chat_id or current_app.config.get("TELEGRAM_NOTIFICATION_CHAT_ID")
     if not token or not chat_id:
         current_app.logger.info(
             "Telegram auction notifications are disabled; "

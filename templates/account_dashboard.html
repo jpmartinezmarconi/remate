@@ -25,6 +25,25 @@
   </section>
 
   <section class="private-panel mb-4">
+    <h2>Avisos de pujas por Telegram</h2>
+    {% if user.telegram_chat_id %}
+      <p>Tu cuenta está vinculada. Te avisaremos por Telegram si superan una de tus pujas.</p>
+      <form method="post" action="{{ url_for('account.unlink_telegram') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-outline-secondary" type="submit">Desvincular Telegram</button>
+      </form>
+    {% elif telegram_enabled %}
+      <p>Vinculá tu chat para recibir un mensaje cuando otra persona supere tu puja.</p>
+      <form method="post" action="{{ url_for('account.link_telegram') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-auction" type="submit">Vincular con Telegram</button>
+      </form>
+    {% else %}
+      <p class="text-secondary mb-0">Los avisos por Telegram no están disponibles por el momento.</p>
+    {% endif %}
+  </section>
+
+  <section class="private-panel mb-4">
     <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
       <div><h2 class="mb-1">Subastas que gané</h2><p class="text-secondary mb-0">Las subastas ganadas aparecen luego de la fecha de cierre.</p></div>
       <span class="auction-count">{{ won_auctions|length }} lote{{ '' if won_auctions|length == 1 else 's' }}</span>

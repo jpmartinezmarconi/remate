@@ -1,5 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import re
+import secrets
 import smtplib
 
 from flask import (
@@ -33,6 +35,7 @@ PAYMENT_PORTALS = {
     "brou_transfer": "https://www.ebanking.brou.com.uy/frontend/",
     "mi_dinero": "https://webapp.midinero.com.uy/",
 }
+TELEGRAM_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 
 
 def _profile_values() -> dict[str, str]:
@@ -143,6 +146,7 @@ def dashboard():
         won_auctions=won_auctions,
         payments=payments,
         payment_totals=payment_totals,
+        telegram_enabled=bool(current_app.config.get("TELEGRAM_BOT_TOKEN")),
     )
 
 
@@ -167,6 +171,44 @@ def update_profile():
         setattr(g.current_user, field, value)
     db.session.commit()
     flash("Tus datos se actualizaron correctamente.", "success")
+    return redirect(url_for("account.dashboard"))
+
+
+@account_bp.post("/telegram/vincular")
+@login_required
+@csrf_protect
+def link_telegram():
+    if not current_app.config.get("TELEGRAM_BOT_TOKEN"):
+        flash("La vinculación con Telegram no está disponible por el momento.", "warning")
+        return redirect(url_for("account.dashboard"))
+    if g.current_user.telegram_chat_id:
+        flash("Tu cuenta ya está vinculada con Telegram.", "info")
+        return redirect(url_for("account.dashboard"))
+
+    username = current_app.config.get("TELEGRAM_BOT_USERNAME", "rematemartinezbot")
+    if not isinstance(username, str) or not TELEGRAM_USERNAME_PATTERN.fullmatch(username):
+        current_app.logger.error("TELEGRAM_BOT_USERNAME is invalid.")
+        flash("No se pudo iniciar la vinculación con Telegram.", "danger")
+        return redirect(url_for("account.dashboard"))
+
+    token = secrets.token_urlsafe(24)
+    g.current_user.telegram_link_token = token
+    g.current_user.telegram_link_token_expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=10)
+    )
+    db.session.commit()
+    return redirect(f"https://t.me/{username}?start={token}")
+
+
+@account_bp.post("/telegram/desvincular")
+@login_required
+@csrf_protect
+def unlink_telegram():
+    g.current_user.telegram_chat_id = None
+    g.current_user.telegram_link_token = None
+    g.current_user.telegram_link_token_expires_at = None
+    db.session.commit()
+    flash("Se desvinculó tu cuenta de Telegram.", "success")
     return redirect(url_for("account.dashboard"))
 
 

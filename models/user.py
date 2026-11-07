@@ -16,6 +16,9 @@ class User(db.Model):
     postal_code = db.Column(db.String(20), nullable=False, default="")
     password_hash = db.Column(db.String(256), nullable=False)
     password_reset_requested_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    telegram_chat_id = db.Column(db.String(64), nullable=True)
+    telegram_link_token = db.Column(db.String(64), nullable=True)
+    telegram_link_token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -35,6 +38,10 @@ class User(db.Model):
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="select",
+    )
+
+    __table_args__ = (
+        db.Index("uq_user_telegram_chat_id", "telegram_chat_id", unique=True),
     )
 
     @property

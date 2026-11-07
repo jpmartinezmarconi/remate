@@ -2,6 +2,7 @@ from io import BytesIO, StringIO
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import csv
+import json
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -1485,6 +1486,116 @@ class PrivateAreaTest(unittest.TestCase):
                 self.assertIn(f"/subasta/{auction_id}", message.get_content())
 
             self.assertIsNotNone(notification.sent_at)
+
+    def test_outbid_bidder_receives_telegram_message_with_lot_link(self):
+        self.login()
+        self.create_lot("OUTBID-TELEGRAM")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            auction_id = auction.id
+            bidders = [
+                User(
+                    username=f"telegrambidder{index}",
+                    full_name=f"Telegram Bidder {index}",
+                    email=f"telegrambidder{index}@example.test",
+                    phone="099123456",
+                    shipping_address="18 de Julio 1000",
+                    city="Montevideo",
+                    postal_code="11100",
+                    telegram_chat_id="987654321" if index == 0 else None,
+                )
+                for index in range(2)
+            ]
+            for bidder in bidders:
+                bidder.set_password("safe-password")
+            db.session.add_all(bidders)
+            db.session.flush()
+            first_bid = Bid(amount=Decimal("150"), auction=auction, bidder=bidders[0])
+            replacement_bid = Bid(
+                amount=Decimal("200"), auction=auction, bidder=bidders[1]
+            )
+            db.session.add_all([first_bid, replacement_bid])
+            db.session.add(
+                AuctionOutbidNotification(
+                    outbid_bid=first_bid,
+                    replacement_bid=replacement_bid,
+                )
+            )
+            db.session.commit()
+
+            self.app.config["TELEGRAM_BOT_TOKEN"] = "test-token"
+            with patch("app.auction_reminders.smtplib.SMTP"), patch(
+                "app.telegram_notifications.urlopen"
+            ) as telegram_urlopen:
+                telegram_urlopen.return_value.__enter__.return_value.read.return_value = (
+                    b'{"ok":true,"result":{}}'
+                )
+                self.assertEqual(send_due_auction_outbid_notifications(), 1)
+
+            payload = json.loads(telegram_urlopen.call_args.args[0].data)
+            self.assertEqual(payload["chat_id"], "987654321")
+            self.assertIn("Su puja ha sido superada", payload["text"])
+            self.assertIn("https://remate.example.test/subasta/" + str(auction_id), payload["text"])
+            notification = AuctionOutbidNotification.query.one()
+            self.assertIsNotNone(notification.sent_at)
+            self.assertIsNotNone(notification.telegram_sent_at)
+
+    def test_outbid_telegram_retry_does_not_resend_email(self):
+        self.login()
+        self.create_lot("OUTBID-TELEGRAM-RETRY")
+        with self.app.app_context():
+            auction = Auction.query.one()
+            bidder = User(
+                username="telegram-retry",
+                full_name="Telegram Retry",
+                email="telegram-retry@example.test",
+                phone="099123456",
+                shipping_address="18 de Julio 1000",
+                city="Montevideo",
+                postal_code="11100",
+                telegram_chat_id="987654322",
+            )
+            replacement_bidder = User(
+                username="replacement-retry",
+                full_name="Replacement Bidder",
+                email="replacement-retry@example.test",
+            )
+            bidder.set_password("safe-password")
+            replacement_bidder.set_password("safe-password")
+            db.session.add_all([bidder, replacement_bidder])
+            db.session.flush()
+            outbid_bid = Bid(amount=Decimal("150"), auction=auction, bidder=bidder)
+            replacement_bid = Bid(
+                amount=Decimal("200"),
+                auction=auction,
+                bidder=replacement_bidder,
+            )
+            db.session.add_all([outbid_bid, replacement_bid])
+            db.session.add(
+                AuctionOutbidNotification(
+                    outbid_bid=outbid_bid,
+                    replacement_bid=replacement_bid,
+                )
+            )
+            db.session.commit()
+            self.app.config["TELEGRAM_BOT_TOKEN"] = "test-token"
+
+            with patch("app.auction_reminders.smtplib.SMTP") as smtp, patch(
+                "app.auction_reminders.send_telegram_notification",
+                side_effect=[RuntimeError("Telegram unavailable"), None],
+            ) as telegram:
+                with patch.object(self.app.logger, "exception"):
+                    with self.assertRaises(RuntimeError):
+                        send_due_auction_outbid_notifications()
+                    notification = AuctionOutbidNotification.query.one()
+                    self.assertIsNotNone(notification.sent_at)
+                    self.assertIsNone(notification.telegram_sent_at)
+
+                    self.assertEqual(send_due_auction_outbid_notifications(), 0)
+                    notification = AuctionOutbidNotification.query.one()
+                    self.assertIsNotNone(notification.telegram_sent_at)
+                self.assertEqual(smtp.call_count, 1)
+                self.assertEqual(telegram.call_count, 2)
 
     def test_outbid_email_is_attempted_immediately_and_retried_if_smtp_fails(self):
         self.login()

@@ -78,7 +78,7 @@ El botón «¿Necesitás ayuda?» abre un asistente en el sitio. Responde pregun
 
 ## Bot de Telegram
 
-El bot `@rematemartinezbot` usa un webhook HTTPS (`/telegram/webhook`) y el mismo asistente de ayuda del sitio. En Render, configura `TELEGRAM_BOT_TOKEN` con el token de BotFather y `TELEGRAM_WEBHOOK_SECRET` con un valor aleatorio de 1 a 256 letras, números, guiones o guiones bajos. Para recibir avisos al finalizar subastas, iniciá un chat privado con el bot, enviá `/id` y guardá el número que responde como `TELEGRAM_NOTIFICATION_CHAT_ID` en Render. No compartas ni guardes el token o el identificador de chat en Git. `PUBLIC_BASE_URL` debe apuntar a la URL HTTPS del servicio (Render la expone como `RENDER_EXTERNAL_URL` si no se define).
+El bot `@rematemartinezbot` usa un webhook HTTPS (`/telegram/webhook`) y el mismo asistente de ayuda del sitio. En Render, configura `TELEGRAM_BOT_TOKEN` con el token de BotFather y `TELEGRAM_WEBHOOK_SECRET` con un valor aleatorio de 1 a 256 letras, números, guiones o guiones bajos. Desde «Mi cuenta», cada participante puede vincular su chat con el botón «Vincular con Telegram»; la autorización vence a los 10 minutos. Si superan una de sus pujas recibirá un mensaje privado con un enlace directo al lote. Para recibir avisos generales al finalizar subastas, iniciá un chat privado con el bot, enviá `/id` y guardá el número que responde como `TELEGRAM_NOTIFICATION_CHAT_ID` en Render. No compartas ni guardes el token o los identificadores de chat en Git. `PUBLIC_BASE_URL` debe apuntar a la URL HTTPS del servicio (Render la expone como `RENDER_EXTERNAL_URL` si no se define).
 
 Después de desplegar y cargar esas variables, ejecuta desde el directorio `MiProyecto` en la consola de Render:
 

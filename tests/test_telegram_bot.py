@@ -8,6 +8,7 @@ from app import create_app
 from app.database import db
 from models.auction import Auction
 from models.auction_group import AuctionGroup
+from models.user import User
 
 
 class TelegramBotConfig:
@@ -122,6 +123,53 @@ class TelegramBotTest(unittest.TestCase):
         self.assertIn("12345", payload["text"])
         self.assertIn("TELEGRAM_NOTIFICATION_CHAT_ID", payload["text"])
         self.assertNotIn("reply_markup", payload)
+
+    @patch("routes.telegram_bot.urlopen")
+    def test_account_can_link_a_private_telegram_chat(self, mocked_urlopen):
+        mocked_urlopen.return_value.__enter__.return_value.read.return_value = (
+            b'{"ok":true,"result":{}}'
+        )
+        with self.app.app_context():
+            user = User(
+                username="telegram-user",
+                full_name="Telegram User",
+                email="telegram-user@example.test",
+                password_hash="test-hash",
+            )
+            db.session.add(user)
+            db.session.commit()
+            user_id = user.id
+
+        with self.client.session_transaction() as session:
+            session["user_id"] = user_id
+        self.client.get("/cuenta")
+        with self.client.session_transaction() as session:
+            csrf_token = session["csrf_token"]
+        response = self.client.post(
+            "/cuenta/telegram/vincular",
+            data={"csrf_token": csrf_token},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.location.startswith("https://t.me/rematemartinezbot?start="))
+        link_token = response.location.split("start=", maxsplit=1)[1]
+        linked = self.post_update(
+            {
+                "message": {
+                    "text": f"/start {link_token}",
+                    "chat": {"id": 12345, "type": "private"},
+                }
+            }
+        )
+
+        self.assertEqual(linked.status_code, 200)
+        reply = json.loads(mocked_urlopen.call_args.args[0].data)
+        self.assertIn("Cuenta vinculada", reply["text"])
+        with self.app.app_context():
+            user = db.session.get(User, user_id)
+            self.assertEqual(user.telegram_chat_id, "12345")
+            self.assertIsNone(user.telegram_link_token)
+            self.assertIsNone(user.telegram_link_token_expires_at)
 
     @patch("routes.telegram_bot.urlopen")
     def test_answers_common_questions_and_filters_non_web_links(self, mocked_urlopen):
