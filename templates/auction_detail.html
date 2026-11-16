@@ -87,7 +87,28 @@
       <div class="seller-note mt-4">Remate Martínez Online · Una tradición uruguaya.</div>
     </aside></div>
   </div>
-  {% if auction.bids %}<div class="mt-5"><h2 class="h4">Últimas ofertas</h2><div class="list-group list-group-flush bid-list">{% for bid in auction.bids|sort(attribute='created_at', reverse=true) %}<div class="list-group-item d-flex justify-content-between"><span>{{ bid.bidder.username }}</span><strong>{{ bid.amount|uyu }}</strong></div>{% endfor %}</div></div>{% endif %}
+  {% if auction.bids %}
+    <section class="mt-5" id="auction-results" aria-labelledby="auction-results-title">
+      {% if not auction.is_active and winning_bid %}
+        <h2 class="h4" id="auction-results-title">Resultado del remate</h2>
+        <div class="alert alert-success">
+          <strong>Lote adjudicado a {{ winning_bid.bidder.username }}</strong>
+          <div>Oferta ganadora{% if auction.sale_mode == "units" %} por unidad{% endif %}: {{ winning_bid.amount|uyu }}</div>
+          {% if auction.sale_mode == "units" %}
+            <div>Total por {{ auction.quantity }} unidades: {{ (winning_bid.amount * auction.quantity)|uyu }}</div>
+          {% endif %}
+        </div>
+        <h3 class="h5 mt-4">Historial de ofertas</h3>
+      {% else %}
+        <h2 class="h4" id="auction-results-title">Últimas ofertas</h2>
+      {% endif %}
+      <div class="list-group list-group-flush bid-list">
+        {% for bid in auction.bids|sort(attribute='created_at', reverse=true) %}
+          <div class="list-group-item d-flex justify-content-between"><span>{{ bid.bidder.username }}</span><strong>{{ bid.amount|uyu }}</strong></div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
   {% if related_auctions %}
     <section class="mt-5" aria-labelledby="related-auctions-title">
       <div class="section-heading"><div><span class="section-kicker">SEGUIR EXPLORANDO</span><h2 id="related-auctions-title">Artículos relacionados</h2></div></div>

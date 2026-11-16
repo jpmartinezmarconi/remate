@@ -50,8 +50,8 @@
       </div>
       <a class="btn btn-auction w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}">⚒ <span>Ofertar</span></a>
     {% else %}
-      <div class="auction-closing">Subastado el {{ auction.closes_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</div>
-      <a class="btn btn-outline-secondary w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}">Ver resultado</a>
+      <div class="auction-closing">{% if auction.bid_count %}Subastado{% else %}Finalizado sin ofertas{% endif %} el {{ auction.closes_at_montevideo.strftime('%d/%m/%Y · %H:%M') }} h</div>
+      <a class="btn btn-outline-secondary w-100" href="{{ url_for('auction.detail', auction_id=auction.id) }}{% if auction.bid_count %}#auction-results{% endif %}">Ver resultado</a>
     {% endif %}
   </div>
 </article>

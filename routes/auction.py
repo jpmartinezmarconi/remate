@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import smtplib
 
@@ -200,11 +200,22 @@ def active_auctions():
         .order_by(Auction.closes_at.desc(), Auction.id.desc())
         .all()
     )
-    listed_auctions = auctions + sold_auctions
+    unsold_auctions = (
+        Auction.query.filter(
+            Auction.closes_at <= now,
+            Auction.closes_at > now - timedelta(hours=24),
+            ~Auction.bids.any(),
+        )
+        .order_by(Auction.closes_at.desc(), Auction.id.desc())
+        .all()
+    )
+    listed_auctions = auctions + sold_auctions + unsold_auctions
     return render_template(
         "active_auctions.html",
         auctions=auctions,
         sold_auctions=sold_auctions,
+        unsold_auctions=unsold_auctions,
+        now_timestamp=now.replace(tzinfo=timezone.utc).timestamp(),
         cover_photos=cover_photo_ids(listed_auctions),
         favorite_auction_ids=_favorite_auction_ids(
             g.current_user.id if g.current_user else None
@@ -237,7 +248,11 @@ def upcoming_auctions():
 @auction_bp.get("/subasta/<int:auction_id>")
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
-    leading_bid = _leading_bid(auction.id) if g.current_user else None
+    leading_bid = (
+        _leading_bid(auction.id)
+        if g.current_user or (not auction.is_active and auction.bid_count)
+        else None
+    )
     related_auctions = (
         _related_auctions(auction)
         if request.args.get("bid") == "success"
@@ -262,6 +277,7 @@ def detail(auction_id: int):
     return render_template(
         "auction_detail.html",
         auction=auction,
+        winning_bid=leading_bid if not auction.is_active else None,
         reminder_subscribed=reminder_subscribed,
         is_favorite=(
             AuctionFavorite.query.filter_by(
@@ -278,7 +294,9 @@ def detail(auction_id: int):
         related_auctions=related_auctions,
         cover_photos=cover_photo_ids(related_auctions),
         is_current_bidder=(
-            leading_bid is not None and leading_bid.user_id == g.current_user.id
+            g.current_user is not None
+            and leading_bid is not None
+            and leading_bid.user_id == g.current_user.id
         ),
     )
 

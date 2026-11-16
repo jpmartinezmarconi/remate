@@ -586,11 +586,16 @@ class PrivateAreaTest(unittest.TestCase):
             db.session.commit()
 
         edit_url = f"/area-privada/lotes/{previous_id}/editar"
+        edit_page = self.client.get(edit_url)
         self.assertIn(
             b"Publicar este art\xc3\xadculo en un nuevo remate",
-            self.client.get(edit_url).data,
+            edit_page.data,
         )
-        self.assertIn(b"Publicar pr\xc3\xb3ximamente", self.client.get(edit_url).data)
+        self.assertIn(b"Publicar pr\xc3\xb3ximamente", edit_page.data)
+        self.assertIn(
+            "onsubmit=\"return confirm('Este lote ya fue vendido, ¿está seguro que quiere volver a publicarlo?');\"",
+            edit_page.get_data(as_text=True),
+        )
         starts_at = (datetime.now(timezone.utc) + timedelta(days=1)).astimezone(
             ZoneInfo("America/Montevideo")
         )
@@ -828,7 +833,7 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertNotIn("Artículo FUTURE-01", active_page)
         self.assertIn("Artículo SOLD-01", active_page)
         self.assertIn("SUBASTADO", active_page)
-        self.assertNotIn("Artículo ENDED-01", active_page)
+        self.assertIn("Artículo ENDED-01", active_page)
         self.assertIn("Artículo FUTURE-01", upcoming_page)
         self.assertNotIn("Artículo LIVE-01", upcoming_page)
         self.assertNotIn("Artículo SOLD-01", upcoming_page)
@@ -836,6 +841,123 @@ class PrivateAreaTest(unittest.TestCase):
             self.client.get("/articulos-en-remate").status_code,
             200,
         )
+        with self.app.app_context():
+            sold_id = Auction.query.filter_by(lot_number="SOLD-01").one().id
+        self.assertIn(f'href="/subasta/{sold_id}#auction-results"', active_page)
+        result_page = self.client.get(f"/subasta/{sold_id}#auction-results")
+        self.assertEqual(result_page.status_code, 200)
+        result_html = result_page.get_data(as_text=True)
+        self.assertIn('id="auction-results"', result_html)
+        self.assertIn("Resultado del remate", result_html)
+        self.assertIn("soldwinner", result_html)
+        self.assertIn("$U 150.00", result_html)
+
+    def test_unsold_lots_disappear_after_24_hours_and_can_be_relaunched(self):
+        self.login()
+        self.create_lot("UNSOLD-01")
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        with self.app.app_context():
+            auction = Auction.query.filter_by(lot_number="UNSOLD-01").one()
+            auction_id = auction.id
+            auction.starts_at = now - timedelta(hours=25)
+            auction.closes_at = now - timedelta(hours=24)
+            db.session.commit()
+
+        with patch("routes.auction.utc_now_naive", return_value=now - timedelta(microseconds=1)):
+            before = self.client.get("/subastas-activas").get_data(as_text=True)
+        self.assertIn("Artículo UNSOLD-01", before)
+        self.assertIn("Finalizado sin ofertas", before)
+
+        with patch("routes.auction.utc_now_naive", return_value=now):
+            at_deadline = self.client.get("/subastas-activas").get_data(as_text=True)
+        self.assertNotIn("Artículo UNSOLD-01", at_deadline)
+
+        private_page = self.client.get("/area-privada/panel").get_data(as_text=True)
+        self.assertIn("Artículo UNSOLD-01", private_page)
+        edit_page = self.client.get(
+            f"/area-privada/lotes/{auction_id}/editar"
+        ).get_data(as_text=True)
+        self.assertIn('name="action" value="relaunch"', edit_page)
+        self.assertNotIn("Este lote ya fue vendido", edit_page)
+
+        response = self.client.post(
+            f"/area-privada/lotes/{auction_id}/editar",
+            data={
+                "csrf_token": self.csrf_token(),
+                "action": "relaunch",
+                "title": "Artículo republicado",
+                "description": "Descripción del artículo",
+                "lot_number": "UNSOLD-01",
+                "group_id": str(self.created_groups["Colección"]),
+                "starting_price": "100",
+                "commission_percent": "20",
+                "quantity": "1",
+                "sale_mode": "lot",
+                "start_mode": "now",
+                "duration_hours": "24",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se publicó nuevamente", response.get_data(as_text=True))
+        with self.app.app_context():
+            original = db.session.get(Auction, auction_id)
+            self.assertEqual(original.bid_count, 0)
+            self.assertEqual(Auction.query.count(), 2)
+            relaunch = Auction.query.filter_by(title="Artículo republicado").one()
+            self.assertTrue(relaunch.is_active)
+            relaunch_id = relaunch.id
+            starts_at = relaunch.starts_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+            closes_at = relaunch.closes_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+
+        edit_response = self.client.post(
+            f"/area-privada/lotes/{relaunch_id}/editar",
+            data={
+                "csrf_token": self.csrf_token(),
+                "title": "Artículo actualizado",
+                "description": "Descripción del artículo",
+                "lot_number": "UNSOLD-01",
+                "group_id": str(self.created_groups["Colección"]),
+                "starting_price": "100",
+                "commission_percent": "20",
+                "quantity": "1",
+                "sale_mode": "lot",
+                "starts_at": starts_at,
+                "closes_at": closes_at,
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se actualizó correctamente", edit_response.get_data(as_text=True))
+
+        with self.app.app_context():
+            relaunch = db.session.get(Auction, relaunch_id)
+            relaunch.starts_at = now - timedelta(hours=26)
+            relaunch.closes_at = now - timedelta(hours=25)
+            db.session.commit()
+
+        second_response = self.client.post(
+            f"/area-privada/lotes/{relaunch_id}/editar",
+            data={
+                "csrf_token": self.csrf_token(),
+                "action": "relaunch",
+                "title": "Artículo republicado otra vez",
+                "description": "Descripción del artículo",
+                "lot_number": "UNSOLD-01",
+                "group_id": str(self.created_groups["Colección"]),
+                "starting_price": "100",
+                "commission_percent": "20",
+                "quantity": "1",
+                "sale_mode": "lot",
+                "start_mode": "now",
+                "duration_hours": "24",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn("se publicó nuevamente", second_response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 3)
+            self.assertTrue(
+                Auction.query.filter_by(title="Artículo republicado otra vez").one().is_active
+            )
 
     def test_scheduled_auction_can_be_subscribed_to_and_sends_one_email(self):
         self.login()

@@ -561,12 +561,14 @@ def edit_auction(auction_id: int):
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
         closes_at_utc = starts_at_utc + timedelta(hours=duration_hours)
 
-        duplicate_lot = Auction.query.filter(
+        duplicate_lots = Auction.query.filter(
             Auction.group_id == group.id,
             Auction.lot_number == lot_number,
             Auction.id != auction.id,
-        ).first()
-        if duplicate_lot:
+        )
+        if group.id == auction.group_id and lot_number == auction.lot_number:
+            duplicate_lots = duplicate_lots.filter(Auction.closes_at > now_utc)
+        if duplicate_lots.first():
             flash("Ese número de lote ya existe dentro del grupo seleccionado.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
@@ -661,12 +663,16 @@ def edit_auction(auction_id: int):
             flash("La cantidad debe ser un número entero positivo válido.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
-        duplicate_lot = Auction.query.filter(
+        duplicate_lots = Auction.query.filter(
             Auction.group_id == group.id,
             Auction.lot_number == lot_number,
             Auction.id != auction.id,
-        ).first()
-        if duplicate_lot:
+        )
+        if group.id == auction.group_id and lot_number == auction.lot_number:
+            duplicate_lots = duplicate_lots.filter(
+                Auction.closes_at > datetime.now(timezone.utc).replace(tzinfo=None)
+            )
+        if duplicate_lots.first():
             flash("Ese número de lote ya existe dentro del grupo seleccionado.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 

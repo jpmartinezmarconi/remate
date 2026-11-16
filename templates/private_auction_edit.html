@@ -18,7 +18,7 @@
         número de lote, precio, comisión, modalidad, cantidad y fechas no se pueden modificar.
       </div>
     {% endif %}
-    <form method="post" action="{{ url_for('private_area.edit_auction', auction_id=auction.id) }}" enctype="multipart/form-data" class="row g-3">
+    <form method="post" action="{{ url_for('private_area.edit_auction', auction_id=auction.id) }}" enctype="multipart/form-data" class="row g-3"{% if auction.bid_count %} onsubmit="return confirm('Este lote ya fue vendido, ¿está seguro que quiere volver a publicarlo?');"{% endif %}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="col-md-8">
         <label class="form-label" for="title">Artículo</label>
@@ -138,7 +138,7 @@
       </div>
     </form>
 
-    {% if has_history and can_relaunch %}
+    {% if can_relaunch %}
       <hr class="my-4">
       <div class="mb-3">
         <h2 class="h4">Publicar este artículo en un nuevo remate</h2>

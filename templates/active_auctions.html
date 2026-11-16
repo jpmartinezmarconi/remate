@@ -13,7 +13,7 @@
         <h2 class="auction-group-title">{{ group_name }}</h2>
         <div class="row g-3">
           {% for auction in group_auctions %}
-            <div class="col-sm-6 col-lg-4 col-xl-3">
+            <div class="col-sm-6 col-lg-4 col-xl-3"{% if not auction.bid_count %} data-unsold-expire-delay="{{ ((auction.closes_at_montevideo.timestamp() - now_timestamp + 86400) * 1000)|round(0, 'ceil')|int }}"{% endif %}>
               {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
             </div>
           {% endfor %}
@@ -27,6 +27,23 @@
       <p>Podés consultar las subastas que comenzarán próximamente.</p>
       <a class="btn btn-auction" href="{{ url_for('auction.upcoming_auctions') }}">Ver próximas subastas</a>
     </div>
+  {% endif %}
+  {% if unsold_auctions %}
+    <section class="mt-5" aria-labelledby="unsold-auctions-title">
+      <div class="section-heading">
+        <div><span class="section-kicker">REMATES FINALIZADOS</span><h2 id="unsold-auctions-title">Lotes finalizados sin ofertas</h2></div>
+        <span class="auction-count">{{ unsold_auctions|length }} lote{{ '' if unsold_auctions|length == 1 else 's' }}</span>
+      </div>
+      <p class="text-secondary">Estos lotes se muestran durante las 24 horas posteriores al cierre.</p>
+      {% from "_auction_card.html" import render_auction_card with context %}
+      <div class="row g-3">
+        {% for auction in unsold_auctions %}
+          <div class="col-sm-6 col-lg-4 col-xl-3" data-unsold-expire-delay="{{ ((auction.closes_at_montevideo.timestamp() - now_timestamp + 86400) * 1000)|round(0, 'ceil')|int }}">
+            {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
   {% endif %}
   {% if sold_auctions %}
     <section class="sold-auctions-section mt-5" aria-labelledby="sold-auctions-title">

@@ -1,4 +1,12 @@
 (() => {
+  const expiryDelays = Array.from(
+    document.querySelectorAll("[data-unsold-expire-delay]")
+  ).map((element) => Number(element.dataset.unsoldExpireDelay))
+    .filter((delay) => Number.isFinite(delay) && delay > 0);
+  if (expiryDelays.length) {
+    window.setTimeout(() => window.location.reload(), Math.min(...expiryDelays));
+  }
+
   const timers = Array.from(
     document.querySelectorAll("[data-auction-countdown]")
   ).map((element) => {
@@ -37,6 +45,7 @@
             action.classList.remove("btn-auction");
             action.classList.add("btn-outline-secondary");
             action.textContent = "Ver resultado";
+            action.href = `${action.href.split("#")[0]}#auction-results`;
           }
         }
         document
