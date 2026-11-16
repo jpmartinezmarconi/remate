@@ -15,6 +15,7 @@ class AuctionOutbidNotification(db.Model):
         db.Integer, db.ForeignKey("bid.id", ondelete="CASCADE"), nullable=False
     )
     sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    telegram_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     outbid_bid = db.relationship("Bid", foreign_keys=[outbid_bid_id])
     replacement_bid = db.relationship("Bid", foreign_keys=[replacement_bid_id])

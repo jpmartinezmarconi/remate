@@ -1,6 +1,5 @@
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from html import escape
 from urllib.parse import urljoin, urlsplit
 import smtplib
@@ -10,6 +9,7 @@ from flask import current_app, url_for
 from sqlalchemy import or_
 
 from app.database import db
+from app.mail_message import transactional_message
 from models.auction import Auction
 from models.auction_closing_reminder import AuctionClosingReminder
 from models.auction_completion_notification import AuctionCompletionNotification
@@ -53,6 +53,16 @@ def _auction_url(base_url: str, auction_id: int) -> str:
         )
 
 
+def _public_base_url() -> str:
+    base_url = current_app.config.get("PUBLIC_BASE_URL")
+    if not base_url:
+        raise RuntimeError("PUBLIC_BASE_URL is required to build auction links.")
+    parsed_base_url = urlsplit(base_url)
+    if parsed_base_url.scheme not in {"http", "https"} or not parsed_base_url.netloc:
+        raise RuntimeError("PUBLIC_BASE_URL must be an absolute HTTP or HTTPS URL.")
+    return base_url
+
+
 def send_due_auction_reminders(now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -91,12 +101,10 @@ def send_due_auction_reminders(now: datetime | None = None) -> int:
                 )
             auction_url = _auction_url(base_url, auction.id)
             starts_at = auction.starts_at_montevideo.strftime("%d/%m/%Y a las %H:%M")
-            message = EmailMessage()
-            message["Subject"] = (
-                f"Recordatorio: la subasta de {auction.title} comienza mañana"
+            message = transactional_message(
+                sender, user.email,
+                f"Recordatorio: la subasta de {auction.title} comienza mañana",
             )
-            message["From"] = sender
-            message["To"] = user.email
             message.set_content(
                 f"Hola {user.username}:\n\n"
                 f"La subasta de {auction.title} comienza el {starts_at} "
@@ -165,10 +173,7 @@ def send_due_auction_closing_reminders(now: datetime | None = None) -> int:
                 raise RuntimeError(
                     f"User {user.id} has no valid email for auction closing reminder."
                 )
-            message = EmailMessage()
-            message["Subject"] = f"Quedan 30 minutos: {auction.title}"
-            message["From"] = sender
-            message["To"] = user.email
+            message = transactional_message(sender, user.email, f"Quedan 30 minutos: {auction.title}")
             message.set_content(
                 f"Hola {user.username}:\n\n"
                 f"La subasta de {auction.title} (lote {auction.display_lot_number}) "
@@ -294,7 +299,6 @@ def send_due_auction_completion_notifications(
             )
             auction_url = _auction_url(base_url, auction.id)
             closed_at = auction.closes_at_montevideo.strftime("%d/%m/%Y a las %H:%M")
-            message = EmailMessage()
 
             if winner_bid is None:
                 status = "Sin ofertas"
@@ -364,9 +368,7 @@ def send_due_auction_completion_notifications(
                     )
 
             if needs_email:
-                message["Subject"] = subject
-                message["From"] = sender
-                message["To"] = recipient
+                message = transactional_message(sender, recipient, subject)
                 message.set_content(text_body)
                 message.add_alternative(
                     "<!doctype html><html lang=\"es\"><body style=\"margin:0;"
@@ -402,50 +404,144 @@ def send_due_auction_completion_notifications(
     return {"email": sent_count, "telegram": telegram_sent_count}
 
 
-def send_due_auction_outbid_notifications() -> int:
-    notifications = (
-        AuctionOutbidNotification.query.filter(
-            AuctionOutbidNotification.sent_at.is_(None)
-        )
-        .order_by(AuctionOutbidNotification.id.asc())
-        .all()
-    )
-    if not notifications:
-        current_app.logger.info("No auction outbid email notifications are due.")
+def send_due_auction_outbid_notifications(notification_id: int | None = None) -> int:
+    telegram_enabled = bool(current_app.config.get("TELEGRAM_BOT_TOKEN"))
+    pending_channels = [AuctionOutbidNotification.sent_at.is_(None)]
+    if telegram_enabled:
+        pending_channels.append(AuctionOutbidNotification.telegram_sent_at.is_(None))
+    query = db.select(AuctionOutbidNotification.id).where(or_(*pending_channels))
+    if notification_id is not None:
+        query = query.where(AuctionOutbidNotification.id == notification_id)
+    notification_ids = db.session.execute(
+        query.order_by(AuctionOutbidNotification.id.asc())
+    ).scalars().all()
+    if not notification_ids:
+        current_app.logger.info("No auction outbid notifications are due.")
         return 0
 
-    host, port, username, password, sender, base_url = _mail_configuration()
+    has_pending_email = db.session.execute(
+        db.select(AuctionOutbidNotification.id)
+        .where(
+            AuctionOutbidNotification.id.in_(notification_ids),
+            AuctionOutbidNotification.sent_at.is_(None),
+        )
+        .limit(1)
+    ).scalar_one_or_none() is not None
+    try:
+        mail_config = _mail_configuration() if has_pending_email else None
+        mail_config_error = None
+    except (RuntimeError, TypeError, ValueError) as error:
+        mail_config = None
+        mail_config_error = error
     sent_count = 0
-    with smtplib.SMTP(host, port, timeout=30) as mail_server:
-        mail_server.starttls(context=ssl.create_default_context())
-        mail_server.login(username, password)
-
-        for notification in notifications:
-            outbid_bid = notification.outbid_bid
-            replacement_bid = notification.replacement_bid
-            user = outbid_bid.bidder
-            auction = outbid_bid.auction
-            if not user.email or "@" not in user.email:
-                raise RuntimeError(
-                    f"User {user.id} has no valid email for outbid notification "
-                    f"{notification.id}."
-                )
-            message = EmailMessage()
-            message["Subject"] = f"Superaron tu oferta: {auction.title}"
-            message["From"] = sender
-            message["To"] = user.email
-            message.set_content(
-                f"Hola {user.username}:\n\n"
-                f"Tu oferta de $U {outbid_bid.amount:,.2f} para "
-                f"{auction.title} (lote {auction.display_lot_number}) "
-                f"fue superada por una oferta de $U {replacement_bid.amount:,.2f}.\n\n"
-                f"Podés volver a ofertar desde acá: {_auction_url(base_url, auction.id)}\n\n"
-                "Remate Martínez"
+    telegram_sent_count = 0
+    failed_count = 0
+    for candidate_id in notification_ids:
+        notification = db.session.execute(
+            db.select(AuctionOutbidNotification)
+            .where(
+                AuctionOutbidNotification.id == candidate_id,
+                or_(
+                    AuctionOutbidNotification.sent_at.is_(None),
+                    *(
+                        [AuctionOutbidNotification.telegram_sent_at.is_(None)]
+                        if telegram_enabled
+                        else []
+                    ),
+                ),
             )
-            mail_server.send_message(message)
-            notification.sent_at = datetime.now(timezone.utc)
-            db.session.commit()
-            sent_count += 1
+            .with_for_update(skip_locked=True)
+        ).scalar_one_or_none()
+        if notification is None:
+            db.session.rollback()
+            continue
+        outbid_bid = notification.outbid_bid
+        replacement_bid = notification.replacement_bid
+        user = outbid_bid.bidder
+        auction = outbid_bid.auction
 
-    current_app.logger.info("Sent %s auction outbid email notifications.", sent_count)
+        if notification.sent_at is None:
+            try:
+                if mail_config_error:
+                    raise RuntimeError(
+                        "Email notification settings are incomplete."
+                    ) from mail_config_error
+                host, port, username, password, sender, base_url = mail_config
+                if not user.email or "@" not in user.email:
+                    raise RuntimeError(
+                        f"User {user.id} has no valid email for outbid notification "
+                        f"{notification.id}."
+                    )
+                message = transactional_message(sender, user.email, f"Superaron tu oferta: {auction.title}")
+                message.set_content(
+                    f"Hola {user.username}:\n\n"
+                    "Te escribimos porque participaste en esta subasta de Remate Martínez.\n\n"
+                    f"Tu oferta de $U {outbid_bid.amount:,.2f} para "
+                    f"{auction.title} (lote {auction.display_lot_number}) "
+                    f"fue superada por una oferta de $U {replacement_bid.amount:,.2f}.\n\n"
+                    f"Podés volver a ofertar desde acá: {_auction_url(base_url, auction.id)}\n\n"
+                    "Remate Martínez"
+                )
+                with smtplib.SMTP(host, port, timeout=10) as mail_server:
+                    mail_server.starttls(context=ssl.create_default_context())
+                    mail_server.login(username, password)
+                    mail_server.send_message(message)
+                notification.sent_at = datetime.now(timezone.utc)
+                db.session.commit()
+                sent_count += 1
+            except Exception:
+                db.session.rollback()
+                failed_count += 1
+                current_app.logger.exception(
+                    "Could not send outbid email notification %s; it remains pending.",
+                    candidate_id,
+                )
+
+        if telegram_enabled:
+            try:
+                notification = db.session.execute(
+                    db.select(AuctionOutbidNotification)
+                    .where(
+                        AuctionOutbidNotification.id == candidate_id,
+                        AuctionOutbidNotification.telegram_sent_at.is_(None),
+                    )
+                    .with_for_update(skip_locked=True)
+                ).scalar_one_or_none()
+                if notification is None:
+                    db.session.rollback()
+                    continue
+                outbid_bid = notification.outbid_bid
+                replacement_bid = notification.replacement_bid
+                user = outbid_bid.bidder
+                auction = outbid_bid.auction
+                if user.telegram_chat_id:
+                    auction_url = _auction_url(_public_base_url(), auction.id)
+                    send_telegram_notification(
+                        f"Su puja ha sido superada para {auction.title} "
+                        f"(lote {auction.display_lot_number}).\n"
+                        f"Tu oferta: $U {outbid_bid.amount:,.2f}. "
+                        f"Nueva oferta: $U {replacement_bid.amount:,.2f}.\n\n"
+                        f"Entrá al lote y volvé a pujar: {auction_url}",
+                        chat_id=user.telegram_chat_id,
+                    )
+                    telegram_sent_count += 1
+                notification.telegram_sent_at = datetime.now(timezone.utc)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                failed_count += 1
+                current_app.logger.exception(
+                    "Could not send outbid Telegram notification %s; it remains pending.",
+                    candidate_id,
+                )
+
+    current_app.logger.info(
+        "Sent %s auction outbid email and %s Telegram notifications.",
+        sent_count,
+        telegram_sent_count,
+    )
+    if failed_count:
+        raise RuntimeError(
+            f"{failed_count} outbid notification channel(s) remain pending."
+        )
     return sent_count

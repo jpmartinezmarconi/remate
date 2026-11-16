@@ -1,5 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import re
+import secrets
 import smtplib
 
 from flask import (
@@ -29,6 +31,11 @@ PAYMENT_METHODS = {
     "brou_transfer": "Transferencia bancaria BROU",
     "mi_dinero": "Mi Dinero / Red Pagos",
 }
+PAYMENT_PORTALS = {
+    "brou_transfer": "https://www.ebanking.brou.com.uy/frontend/",
+    "mi_dinero": "https://webapp.midinero.com.uy/",
+}
+TELEGRAM_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 
 
 def _profile_values() -> dict[str, str]:
@@ -139,6 +146,7 @@ def dashboard():
         won_auctions=won_auctions,
         payments=payments,
         payment_totals=payment_totals,
+        telegram_enabled=bool(current_app.config.get("TELEGRAM_BOT_TOKEN")),
     )
 
 
@@ -166,13 +174,59 @@ def update_profile():
     return redirect(url_for("account.dashboard"))
 
 
+@account_bp.post("/telegram/vincular")
+@login_required
+@csrf_protect
+def link_telegram():
+    if not current_app.config.get("TELEGRAM_BOT_TOKEN"):
+        flash("La vinculación con Telegram no está disponible por el momento.", "warning")
+        return redirect(url_for("account.dashboard"))
+    if g.current_user.telegram_chat_id:
+        flash("Tu cuenta ya está vinculada con Telegram.", "info")
+        return redirect(url_for("account.dashboard"))
+
+    username = current_app.config.get("TELEGRAM_BOT_USERNAME", "rematemartinezbot")
+    if not isinstance(username, str) or not TELEGRAM_USERNAME_PATTERN.fullmatch(username):
+        current_app.logger.error("TELEGRAM_BOT_USERNAME is invalid.")
+        flash("No se pudo iniciar la vinculación con Telegram.", "danger")
+        return redirect(url_for("account.dashboard"))
+
+    token = secrets.token_urlsafe(24)
+    g.current_user.telegram_link_token = token
+    g.current_user.telegram_link_token_expires_at = (
+        datetime.now(timezone.utc) + timedelta(minutes=10)
+    )
+    db.session.commit()
+    return redirect(f"https://t.me/{username}?start={token}")
+
+
+@account_bp.post("/telegram/desvincular")
+@login_required
+@csrf_protect
+def unlink_telegram():
+    g.current_user.telegram_chat_id = None
+    g.current_user.telegram_link_token = None
+    g.current_user.telegram_link_token_expires_at = None
+    db.session.commit()
+    flash("Se desvinculó tu cuenta de Telegram.", "success")
+    return redirect(url_for("account.dashboard"))
+
+
 @account_bp.route("/subasta/<int:auction_id>/pagar", methods=["GET", "POST"])
 @login_required
 @csrf_protect
 def pay_for_auction(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    if auction.closes_at > now:
+    if request.method == "POST":
+        auction = db.session.execute(
+            db.select(Auction).where(Auction.id == auction_id).with_for_update()
+        ).scalar_one_or_none()
+        if auction is None:
+            abort(404)
+    closes_at = auction.closes_at
+    if closes_at.tzinfo is None:
+        closes_at = closes_at.replace(tzinfo=timezone.utc)
+    if closes_at > datetime.now(timezone.utc):
         abort(404)
     top_bid = (
         Bid.query.filter_by(auction_id=auction.id)
@@ -186,6 +240,9 @@ def pay_for_auction(auction_id: int):
         return redirect(url_for("account.dashboard"))
 
     payment = AuctionPayment.query.filter_by(auction_id=auction.id).first()
+    if payment and payment.status == "paid":
+        flash("Este lote ya figura como pagado.", "info")
+        return redirect(url_for("account.dashboard"))
     if request.method == "POST":
         is_new_payment = payment is None
         method = request.form.get("method", "")
@@ -225,11 +282,7 @@ def pay_for_auction(auction_id: int):
                     "Could not send the purchase notification for auction %s.",
                     auction.id,
                 )
-        flash(
-            "Registramos tu método de pago. El pago todavía está pendiente de confirmación.",
-            "success",
-        )
-        return redirect(url_for("account.dashboard"))
+        return redirect(PAYMENT_PORTALS[method], code=303)
 
     return render_template(
         "auction_payment.html",

@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from functools import wraps
 import smtplib
 import ssl
@@ -20,6 +19,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import or_
 
 from app.database import db
+from app.mail_message import transactional_message
 from models.user import User
 from .security import csrf_protect
 
@@ -54,10 +54,7 @@ def _send_password_reset_email(user: User, token: str) -> None:
 
     reset_path = url_for("auth.reset_password", token=token)
     reset_url = urljoin(base_url.rstrip("/") + "/", reset_path.lstrip("/"))
-    message = EmailMessage()
-    message["Subject"] = "Restablecé tu contraseña · Remate Martínez"
-    message["From"] = sender
-    message["To"] = user.email
+    message = transactional_message(sender, user.email, "Restablecé tu contraseña · Remate Martínez")
     message.set_content(
         f"Hola {user.full_name or user.username}:\n\n"
         "Recibimos una solicitud para restablecer la contraseña de tu cuenta. "

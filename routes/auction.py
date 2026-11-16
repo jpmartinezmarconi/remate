@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation
 import smtplib
 
 from flask import (
@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from urllib.parse import urlsplit
 
 from app.database import db
+from app.auction_reminders import send_due_auction_outbid_notifications
 from app.email_notifications import send_business_notification
 from models.auction import Auction
 from models.auction_favorite import AuctionFavorite
@@ -248,10 +249,14 @@ def upcoming_auctions():
 @auction_bp.get("/subasta/<int:auction_id>")
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
-    leading_bid = (
-        _leading_bid(auction.id)
-        if g.current_user or (not auction.is_active and auction.bid_count)
-        else None
+    leading_bid = _leading_bid(auction.id)
+    has_been_outbid = bool(
+        g.current_user
+        and (leading_bid is None or leading_bid.user_id != g.current_user.id)
+        and Bid.query.filter_by(
+            auction_id=auction.id,
+            user_id=g.current_user.id,
+        ).first()
     )
     related_auctions = (
         _related_auctions(auction)
@@ -277,7 +282,7 @@ def detail(auction_id: int):
     return render_template(
         "auction_detail.html",
         auction=auction,
-        winning_bid=leading_bid if not auction.is_active else None,
+        leading_bid=leading_bid,
         reminder_subscribed=reminder_subscribed,
         is_favorite=(
             AuctionFavorite.query.filter_by(
@@ -298,6 +303,7 @@ def detail(auction_id: int):
             and leading_bid is not None
             and leading_bid.user_id == g.current_user.id
         ),
+        has_been_outbid=has_been_outbid,
     )
 
 
@@ -396,17 +402,16 @@ def place_bid(auction_id: int):
         )
         return redirect(url_for("auction.detail", auction_id=auction.id))
 
-    try:
-        amount = Decimal(request.form.get("amount", "").replace(",", "."))
-        if not amount.is_finite():
-            raise InvalidOperation
-        amount = amount.quantize(Decimal("0.01"))
-    except (InvalidOperation, ValueError):
-        flash("Ingresá un monto válido.", "danger")
-        return redirect(url_for("auction.detail", auction_id=auction.id))
-
-    has_previous_bids = bool(auction.bids)
-    if not has_previous_bids:
+    current_price = Decimal(auction.current_price)
+    if previous_leading_bid is None:
+        try:
+            amount = Decimal(request.form.get("amount", "").replace(",", "."))
+            if not amount.is_finite():
+                raise InvalidOperation
+            amount = amount.quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            flash("Ingresá un monto válido.", "danger")
+            return redirect(url_for("auction.detail", auction_id=auction.id))
         if amount < Decimal(auction.starting_price):
             flash(
                 f"La primera oferta no puede ser menor que el precio base "
@@ -415,43 +420,60 @@ def place_bid(auction_id: int):
             )
             return redirect(url_for("auction.detail", auction_id=auction.id))
     else:
-        if amount <= Decimal(auction.current_price):
-            flash("Tu oferta no puede ser menor o igual a la oferta actual.", "danger")
-            return redirect(url_for("auction.detail", auction_id=auction.id))
-        current_price = Decimal(auction.current_price)
-        bid_increment = minimum_bid_increment(current_price)
-        amount_above_current = amount - current_price
-        valid_steps = max(
-            1,
-            int(
-                (amount_above_current / bid_increment).to_integral_value(
-                    rounding=ROUND_CEILING
-                )
-            ),
-        )
-        next_valid_offer = current_price + bid_increment * valid_steps
-        if amount_above_current < bid_increment or amount_above_current % bid_increment:
+        if request.form.get("expected_bid_id") != str(previous_leading_bid.id):
             flash(
-                f"La próxima oferta válida es $U {next_valid_offer:,.2f}; "
-                f"las pujas avanzan en saltos de $U {bid_increment:,.2f}.",
-                "danger",
+                "La oferta cambió. Revisá el nuevo importe antes de ofertar.",
+                "warning",
             )
             return redirect(url_for("auction.detail", auction_id=auction.id))
+        amount = current_price + minimum_bid_increment(current_price)
 
+    if amount > Decimal("9999999999.99"):
+        flash("La oferta supera el importe máximo permitido.", "danger")
+        return redirect(url_for("auction.detail", auction_id=auction.id))
+
+    # The conditional update protects SQLite as well as databases with row locks.
+    conditions = [
+        Auction.id == auction.id,
+        Auction.current_price == current_price,
+        Auction.starts_at <= utc_now_naive(),
+        Auction.closes_at > utc_now_naive(),
+    ]
+    if previous_leading_bid is None:
+        conditions.append(~Auction.bids.any())
+    updated = db.session.execute(
+        db.update(Auction)
+        .where(*conditions)
+        .values(current_price=amount)
+        .execution_options(synchronize_session=False)
+    )
+    if updated.rowcount != 1:
+        db.session.rollback()
+        flash("La oferta cambió o la subasta cerró. Revisá el lote nuevamente.", "warning")
+        return redirect(url_for("auction.detail", auction_id=auction_id))
+
+    db.session.expire(auction, ["current_price"])
     bid = Bid(amount=amount, auction=auction, bidder=g.current_user)
-    auction.current_price = amount
     db.session.add(bid)
+    outbid_notification = None
     if (
         previous_leading_bid
         and previous_leading_bid.user_id != g.current_user.id
     ):
-        db.session.add(
-            AuctionOutbidNotification(
-                outbid_bid=previous_leading_bid,
-                replacement_bid=bid,
-            )
+        outbid_notification = AuctionOutbidNotification(
+            outbid_bid=previous_leading_bid,
+            replacement_bid=bid,
         )
+        db.session.add(outbid_notification)
     db.session.commit()
+    if outbid_notification is not None:
+        try:
+            send_due_auction_outbid_notifications(outbid_notification.id)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Immediate outbid notification failed; it remains pending for retry."
+            )
     try:
         send_business_notification(
             "Nueva puja recibida · Remate Martínez",

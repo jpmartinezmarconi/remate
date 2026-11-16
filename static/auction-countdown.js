@@ -45,7 +45,6 @@
             action.classList.remove("btn-auction");
             action.classList.add("btn-outline-secondary");
             action.textContent = "Ver resultado";
-            action.href = `${action.href.split("#")[0]}#auction-results`;
           }
         }
         document

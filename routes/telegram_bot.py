@@ -1,12 +1,15 @@
 import hmac
 import json
 import re
+from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 
 from flask import Blueprint, current_app, jsonify, request
 
+from app.database import db
+from models.user import User
 from .help import _answer, MAX_QUESTION_LENGTH
 
 
@@ -15,6 +18,7 @@ TELEGRAM_API_URL = "https://api.telegram.org"
 TELEGRAM_TIMEOUT_SECONDS = 10
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 WEBHOOK_SECRET_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,256}$")
+TELEGRAM_START_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 class TelegramAPIError(Exception):
@@ -45,6 +49,8 @@ def _telegram_api(method: str, payload: dict) -> dict:
 
 
 def _telegram_keyboard(links: list[dict[str, str]]) -> dict | None:
+    if not links:
+        return None
     base_url = current_app.config.get("PUBLIC_BASE_URL")
     if not base_url:
         raise RuntimeError("PUBLIC_BASE_URL is required for Telegram links.")
@@ -69,6 +75,40 @@ def _telegram_keyboard(links: list[dict[str, str]]) -> dict | None:
             buttons[index : index + 2] for index in range(0, len(buttons), 2)
         ]
     }
+
+
+def _link_telegram_account(
+    chat_id: int | str, chat_type: str | None, token: str
+) -> str:
+    if chat_type != "private":
+        return "Abrí un chat privado con el bot para vincular tu cuenta."
+    if not TELEGRAM_START_TOKEN_PATTERN.fullmatch(token):
+        return "El enlace de vinculación no es válido o venció. Iniciá el proceso desde tu cuenta."
+
+    user = User.query.filter_by(telegram_link_token=token).first()
+    if user is None or user.telegram_link_token_expires_at is None:
+        return "El enlace de vinculación no es válido o venció. Iniciá el proceso desde tu cuenta."
+    expires_at = user.telegram_link_token_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        user.telegram_link_token = None
+        user.telegram_link_token_expires_at = None
+        db.session.commit()
+        return "El enlace de vinculación venció. Iniciá el proceso nuevamente desde tu cuenta."
+
+    existing_user = User.query.filter(
+        User.telegram_chat_id == str(chat_id),
+        User.id != user.id,
+    ).first()
+    if existing_user:
+        return "Este chat ya está vinculado a otra cuenta de Remate Martínez."
+
+    user.telegram_chat_id = str(chat_id)
+    user.telegram_link_token = None
+    user.telegram_link_token_expires_at = None
+    db.session.commit()
+    return "¡Cuenta vinculada! Te avisaremos por este chat si superan una de tus pujas."
 
 
 @telegram_bp.post("/telegram/webhook")
@@ -96,12 +136,17 @@ def telegram_webhook():
     chat_id = chat.get("id") if isinstance(chat, dict) else None
     if not isinstance(chat_id, (int, str)) or isinstance(chat_id, bool):
         return jsonify(ok=True)
+    chat_type = chat.get("type") if isinstance(chat, dict) else None
 
     text = message["text"].strip()
     if not text:
         return jsonify(ok=True)
     command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
-    if command == "/id":
+    parts = text.split(maxsplit=1)
+    if command == "/start" and len(parts) == 2:
+        reply = _link_telegram_account(chat_id, chat_type, parts[1].strip())
+        links = []
+    elif command == "/id":
         reply = (
             f"El ID de este chat es: {chat_id}\n"
             "Guardalo como TELEGRAM_NOTIFICATION_CHAT_ID en Render para recibir "

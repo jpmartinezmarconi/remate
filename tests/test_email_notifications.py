@@ -1,4 +1,5 @@
 import unittest
+from email.utils import parseaddr, parsedate_to_datetime
 from unittest.mock import patch
 
 from app import create_app
@@ -36,7 +37,9 @@ class EmailNotificationTest(unittest.TestCase):
         )
         message = mail_server.send_message.call_args.args[0]
         self.assertEqual(message["To"], "remateonline@yahoo.com")
-        self.assertEqual(message["From"], "remateonline@yahoo.com")
+        self.assertEqual(parseaddr(message["From"]), ("Remate Martínez", "remateonline@yahoo.com"))
+        self.assertIsNotNone(parsedate_to_datetime(message["Date"]))
+        self.assertTrue(message["Message-ID"].startswith("<"))
         self.assertEqual(message["Subject"], "Nueva puja")
         self.assertIn("Oferta: $U 150.00", message.get_content())
 
@@ -48,6 +51,15 @@ class EmailNotificationTest(unittest.TestCase):
             send_business_notification("Nueva puja", "Oferta registrada.")
 
         smtp.assert_not_called()
+
+    def test_existing_sender_name_and_message_ids(self):
+        from app.mail_message import transactional_message
+
+        with self.app.app_context():
+            first = transactional_message("Equipo <sender@example.test>", "x@example.test", "Aviso")
+            second = transactional_message("Equipo <sender@example.test>", "x@example.test", "Aviso")
+        self.assertEqual(parseaddr(first["From"]), ("Equipo", "sender@example.test"))
+        self.assertNotEqual(first["Message-ID"], second["Message-ID"])
 
 
 if __name__ == "__main__":

@@ -49,6 +49,25 @@
   </div>
 </section>
 
+<section class="container telegram-section" aria-labelledby="telegram-title">
+  <div class="telegram-card">
+    <div class="telegram-copy">
+      <span class="telegram-kicker">AVISOS Y NOVEDADES</span>
+      <h2 id="telegram-title">Recibí avisos de tus pujas por Telegram</h2>
+      <p>Escaneá el QR o abrí el bot. Después, vinculá tu cuenta desde «Mi cuenta» para que te avisemos si alguien supera tu puja.</p>
+      <a class="telegram-status" href="https://t.me/rematemartinezbot" target="_blank" rel="noopener noreferrer">
+        <span aria-hidden="true"></span> Abrir @rematemartinezbot
+      </a>
+    </div>
+    <div class="telegram-qr-wrap">
+      <a href="https://t.me/rematemartinezbot" target="_blank" rel="noopener noreferrer" aria-label="Abrir el bot de Remate Martínez en Telegram">
+        <img class="telegram-qr" src="{{ url_for('static', filename='telegram-qr.svg') }}" alt="Código QR para abrir @rematemartinezbot en Telegram">
+      </a>
+      <span>Escaneá para abrir el bot</span>
+    </div>
+  </div>
+</section>
+
 <section class="trust-strip" aria-label="Cómo participar">
   <div class="container trust-items">
     <div><span class="trust-icon" aria-hidden="true">♙</span><p><strong>Registrate</strong><small>y empezá a ofertar</small></p></div>
@@ -174,23 +193,14 @@
   <div class="bottom-info-card commission-card"><span aria-hidden="true">%</span><div><strong>Remates online</strong><small>Ofertá fácil, estés donde estés</small></div></div>
 </section>
 
-<section class="container telegram-section" aria-labelledby="telegram-title">
-  <div class="telegram-card">
-    <div class="telegram-copy">
-      <span class="telegram-kicker">NOVEDADES Y PRÓXIMOS REMATES</span>
-      <h2 id="telegram-title">Remate Martínez también en Telegram</h2>
-      <p>Consultá subastas activas y próximas, lotes, horarios, comisión, pagos y formas de contacto.</p>
-      <a class="telegram-status" href="https://t.me/rematemartinezbot" target="_blank" rel="noopener noreferrer">
-        <span aria-hidden="true"></span> Abrir @rematemartinezbot
-      </a>
-    </div>
-    <div class="telegram-qr-wrap">
-      <a class="telegram-status" href="https://t.me/rematemartinezbot" target="_blank" rel="noopener noreferrer">
-        Iniciar conversación
-      </a>
-      <span>Buscanos como @rematemartinezbot</span>
-    </div>
+<section class="container outbid-telegram-reminder" aria-labelledby="outbid-telegram-title">
+  <div>
+    <h2 id="outbid-telegram-title">No pierdas de vista tus pujas</h2>
+    <p>Si quieres que te avisemos si han superado tu puja, entra en tu cuenta y pulsa «Avisos de pujas por Telegram». Así estarás siempre atento.</p>
   </div>
+  <a class="btn btn-auction" href="{{ url_for('account.dashboard') if current_user else url_for('auth.login') }}">
+    {{ 'Ir a mi cuenta' if current_user else 'Ingresar a mi cuenta' }}
+  </a>
 </section>
 {% endblock %}
 {% block scripts %}

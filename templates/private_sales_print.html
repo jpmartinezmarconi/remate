@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ventas seleccionadas · Remate Martínez</title>
+  <style>
+    body { font: 15px/1.5 Arial, sans-serif; color: #17283b; margin: 0; background: #f2f5f8; }
+    main { max-width: 900px; margin: 2rem auto; padding: 2rem; background: white; }
+    h1 { margin: 0 0 .25rem; font-size: 1.8rem; }
+    .subtitle { color: #536477; margin: 0 0 1.5rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 2rem; }
+    .actions button, .actions a { border: 1px solid #064584; border-radius: 6px; padding: .65rem 1rem; font: inherit; text-decoration: none; cursor: pointer; }
+    .actions button { color: white; background: #064584; }
+    .actions a { color: #064584; background: white; }
+    .sale { border: 1px solid #d5dee8; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; break-inside: avoid; }
+    .sale h2 { margin: 0 0 .2rem; font-size: 1.15rem; overflow-wrap: anywhere; }
+    .group { color: #536477; margin: 0 0 .75rem; }
+    dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1rem; margin: 0; }
+    dl div { min-width: 0; overflow-wrap: anywhere; }
+    dt { color: #536477; font-size: .85rem; }
+    dd { margin: 0; font-weight: 600; }
+    @media (max-width: 500px) { main { margin: 0; padding: 1rem; } dl { grid-template-columns: 1fr; } }
+    @media print { body { background: white; } main { max-width: none; margin: 0; padding: 0; } .actions, .print-hint { display: none; } .sale { border-color: #999; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Ventas seleccionadas</h1>
+  <p class="subtitle">Remate Martínez · {{ sales|length }} lote{{ '' if sales|length == 1 else 's' }}</p>
+  <div class="actions">
+    <button type="button" onclick="window.print()">Imprimir o guardar como PDF</button>
+    <a href="{{ url_for('private_area.sales') }}">Volver a ventas</a>
+  </div>
+  <p class="print-hint">Para descargar el documento en PDF, elegí «Guardar como PDF» en el diálogo de impresión.</p>
+  {% for bid in sales %}
+    {% set auction = bid.auction %}
+    {% set payment = payments.get(auction.id) %}
+    <article class="sale">
+      <h2>Lote {{ auction.display_lot_number }} · {{ auction.title }}</h2>
+      <p class="group">{{ auction.group_name }} · Cierre: {{ auction.closes_at_montevideo.strftime('%d/%m/%Y %H:%M') }} (Uruguay)</p>
+      <dl>
+        <div><dt>Adjudicado a</dt><dd>{{ bid.bidder.full_name or bid.bidder.username }}</dd></div>
+        <div><dt>Correo</dt><dd>{{ bid.bidder.email }}</dd></div>
+        <div><dt>Teléfono</dt><dd>{{ bid.bidder.phone or '—' }}</dd></div>
+        <div><dt>Modalidad y cantidad</dt><dd>{{ 'Por unidades' if auction.sale_mode == 'units' else 'Lote completo' }} · {{ auction.quantity }} pieza{{ '' if auction.quantity == 1 else 's' }}</dd></div>
+        <div><dt>Oferta ganadora{% if auction.sale_mode == 'units' %} por unidad{% endif %}</dt><dd>{{ bid.amount|uyu }}</dd></div>
+        <div><dt>Comisión</dt><dd>{{ auction.commission_percent }}%</dd></div>
+        <div><dt>Total con comisión</dt><dd>{{ totals[auction.id]|uyu }}</dd></div>
+        <div><dt>Pago</dt><dd>{{ 'Pagado' if payment and payment.status == 'paid' else 'Pendiente' }}</dd></div>
+      </dl>
+    </article>
+  {% endfor %}
+</main>
+</body>
+</html>
