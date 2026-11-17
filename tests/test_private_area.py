@@ -212,7 +212,6 @@ class PrivateAreaTest(unittest.TestCase):
             "quantity": "3",
             "sale_mode": "units",
             "start_mode": "now",
-            "duration_hours": "24",
         }
         data.update(overrides)
         if data.get("start_mode") == "scheduled" and "starts_at" not in data:
@@ -220,6 +219,16 @@ class PrivateAreaTest(unittest.TestCase):
                 ZoneInfo("America/Montevideo")
             )
             data["starts_at"] = start.strftime("%Y-%m-%dT%H:%M")
+        if "closes_on" not in data:
+            start = (
+                datetime.strptime(data["starts_at"], "%Y-%m-%dT%H:%M")
+                .replace(tzinfo=ZoneInfo("America/Montevideo"))
+                if data.get("start_mode") == "scheduled"
+                else datetime.now(timezone.utc).astimezone(
+                    ZoneInfo("America/Montevideo")
+                )
+            )
+            data["closes_on"] = (start.date() + timedelta(days=2)).isoformat()
         if featured:
             data["featured_on_home"] = "on"
         if photos:
@@ -573,7 +582,12 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "1",
                 "sale_mode": "lot",
                 "start_mode": "now",
-                "duration_hours": "48",
+                "closes_on": (
+                    datetime.now(timezone.utc)
+                    .astimezone(ZoneInfo("America/Montevideo"))
+                    .date()
+                    + timedelta(days=2)
+                ).isoformat(),
             },
             follow_redirects=True,
         )
@@ -581,7 +595,7 @@ class PrivateAreaTest(unittest.TestCase):
             auction = Auction.query.one()
             self.assertEqual(auction.group_id, group_id)
             self.assertEqual(auction.group_name, "Remate de junio")
-            self.assertEqual(auction.closes_at - auction.starts_at, timedelta(hours=48))
+            self.assertEqual(auction.closes_at_montevideo.hour, 22)
 
     def test_new_lot_form_defaults_commission_to_twenty_percent(self):
         self.login()
@@ -609,9 +623,8 @@ class PrivateAreaTest(unittest.TestCase):
             group_id = auction.group_id
             old_photo_id = auction.photos[0].id
             original_starts_at = auction.starts_at
-            original_closes_at = auction.closes_at
             starts_at = auction.starts_at_montevideo.strftime("%Y-%m-%dT%H:%M")
-            closes_at = auction.closes_at_montevideo.strftime("%Y-%m-%dT%H:%M")
+            closes_on = auction.closes_at_montevideo.strftime("%Y-%m-%d")
 
         edit_url = f"/area-privada/lotes/{auction_id}/editar"
         edit_page = self.client.get(edit_url)
@@ -633,7 +646,7 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "4",
                 "sale_mode": "lot",
                 "starts_at": starts_at,
-                "closes_at": closes_at,
+                "closes_on": closes_on,
                 "remove_photo_ids": str(old_photo_id),
                 "photos": (BytesIO(b"\x89PNG\r\n\x1a\nnew"), "new.png"),
             },
@@ -653,7 +666,7 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(auction.quantity, 4)
             self.assertEqual(auction.sale_mode, "lot")
             self.assertEqual(auction.starts_at, original_starts_at)
-            self.assertEqual(auction.closes_at, original_closes_at)
+            self.assertEqual(auction.closes_at_montevideo.strftime("%H:%M"), "22:00")
             self.assertEqual(len(auction.photos), 1)
             self.assertEqual(auction.photos[0].filename, "new.png")
 
@@ -667,7 +680,7 @@ class PrivateAreaTest(unittest.TestCase):
             new_start = (datetime.now(timezone.utc) + timedelta(days=2)).astimezone(
                 ZoneInfo("America/Montevideo")
             )
-            new_close = new_start + timedelta(hours=3)
+            new_close_date = new_start.date() + timedelta(days=1)
 
         response = self.client.post(
             f"/area-privada/lotes/{auction_id}/editar",
@@ -682,7 +695,7 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "3",
                 "sale_mode": "units",
                 "starts_at": new_start.strftime("%Y-%m-%dT%H:%M"),
-                "closes_at": new_close.strftime("%Y-%m-%dT%H:%M"),
+                "closes_on": new_close_date.isoformat(),
             },
             follow_redirects=True,
         )
@@ -698,7 +711,11 @@ class PrivateAreaTest(unittest.TestCase):
             )
             self.assertEqual(
                 auction.closes_at,
-                new_close.astimezone(timezone.utc).replace(
+                datetime.combine(
+                    new_close_date,
+                    datetime.min.time().replace(hour=22),
+                    tzinfo=ZoneInfo("America/Montevideo"),
+                ).astimezone(timezone.utc).replace(
                     second=0, microsecond=0, tzinfo=None
                 ),
             )
@@ -781,6 +798,7 @@ class PrivateAreaTest(unittest.TestCase):
         starts_at = (datetime.now(timezone.utc) + timedelta(days=1)).astimezone(
             ZoneInfo("America/Montevideo")
         )
+        closes_on = (starts_at.date() + timedelta(days=2)).isoformat()
         response = self.client.post(
             edit_url,
             data={
@@ -796,7 +814,7 @@ class PrivateAreaTest(unittest.TestCase):
                 "sale_mode": "lot",
                 "start_mode": "scheduled",
                 "starts_at": starts_at.strftime("%Y-%m-%dT%H:%M"),
-                "duration_hours": "24",
+                "closes_on": closes_on,
             },
             follow_redirects=True,
         )
@@ -814,9 +832,7 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(relaunch.current_price, Decimal("200.00"))
             self.assertEqual(relaunch.bid_count, 0)
             self.assertTrue(relaunch.is_upcoming)
-            self.assertEqual(
-                relaunch.closes_at - relaunch.starts_at, timedelta(hours=24)
-            )
+            self.assertEqual(relaunch.closes_at_montevideo.hour, 22)
 
     def test_finished_lot_can_be_relaunched_immediately(self):
         self.login()
@@ -846,7 +862,12 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "1",
                 "sale_mode": "lot",
                 "start_mode": "now",
-                "duration_hours": "24",
+                "closes_on": (
+                    datetime.now(timezone.utc)
+                    .astimezone(ZoneInfo("America/Montevideo"))
+                    .date()
+                    + timedelta(days=2)
+                ).isoformat(),
             },
             follow_redirects=True,
         )
@@ -855,21 +876,36 @@ class PrivateAreaTest(unittest.TestCase):
             relaunch = Auction.query.filter_by(lot_number="RELIST-NOW-02").one()
             self.assertTrue(relaunch.is_active)
             self.assertFalse(relaunch.is_upcoming)
-            self.assertEqual(
-                relaunch.closes_at - relaunch.starts_at, timedelta(hours=24)
-            )
+            self.assertEqual(relaunch.closes_at_montevideo.hour, 22)
 
-    def test_duration_is_whole_hours_and_cannot_exceed_seven_days(self):
+    def test_closing_date_must_be_within_one_hour_and_seven_days(self):
         self.login()
-        invalid = self.create_lot("D-169", duration_hours="169")
+        closes_on = (
+            datetime.now(timezone.utc)
+            .astimezone(ZoneInfo("America/Montevideo"))
+            .date()
+            + timedelta(days=8)
+        ).isoformat()
+        invalid = self.create_lot("D-169", closes_on=closes_on)
         self.assertIn("entre 1 y 168 horas", invalid.get_data(as_text=True))
         with self.app.app_context():
             self.assertEqual(Auction.query.count(), 0)
 
-        self.create_lot("D-168", duration_hours="168")
+        start = (
+            datetime.now(timezone.utc) + timedelta(days=1)
+        ).astimezone(ZoneInfo("America/Montevideo")).replace(
+            hour=22, minute=0, second=0, microsecond=0
+        )
+        self.create_lot(
+            "D-168",
+            start_mode="scheduled",
+            starts_at=start.strftime("%Y-%m-%dT%H:%M"),
+            closes_on=(start.date() + timedelta(days=7)).isoformat(),
+        )
         with self.app.app_context():
             auction = Auction.query.one()
             self.assertEqual(auction.closes_at - auction.starts_at, timedelta(days=7))
+            self.assertEqual(auction.closes_at_montevideo.hour, 22)
 
     def test_can_delete_selected_lots_and_then_the_entire_empty_group(self):
         self.login()

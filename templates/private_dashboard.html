@@ -92,9 +92,9 @@
         <div class="form-text">En modo unidades, la puja es por unidad y se adjudica toda la cantidad.</div>
       </div>
       <div class="col-md-4">
-        <label class="form-label" for="duration">Duración de la subasta (horas)</label>
-        <input class="form-control" id="duration" name="duration_hours" type="number" min="1" max="168" step="1" value="48" required>
-        <div class="form-text">Ingresá horas enteras, hasta 168 horas (7 días). Ejemplo: 48.</div>
+        <label class="form-label" for="closes-on">Fecha de cierre (Uruguay)</label>
+        <input class="form-control" id="closes-on" name="closes_on" type="date" value="{{ default_closes_on }}" required>
+        <div class="form-text">La subasta finalizará a las 22:00 h de Uruguay; duración entre 1 y 168 horas.</div>
       </div>
       <div class="col-md-4">
         <label class="form-label" for="photos">Fotos del artículo</label>

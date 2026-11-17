@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from html import escape
 import csv
@@ -47,12 +47,19 @@ from .account import _winning_amount
 private_area_bp = Blueprint("private_area", __name__, url_prefix="/area-privada")
 MAX_IMAGE_SIZE = 8 * 1024 * 1024
 MAX_PRICE = Decimal("9999999999.99")
+URUGUAY_TZ = ZoneInfo("America/Montevideo")
 ALLOWED_IMAGE_TYPES = {
     "jpeg": "image/jpeg",
     "png": "image/png",
     "webp": "image/webp",
     "gif": "image/gif",
 }
+
+
+def _closing_datetime(closes_on: str) -> datetime:
+    closing_date = datetime.strptime(closes_on, "%Y-%m-%d").date()
+    local_close = datetime.combine(closing_date, time(hour=22), tzinfo=URUGUAY_TZ)
+    return local_close.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def private_area_required(view):
@@ -189,9 +196,13 @@ def dashboard():
         groups=groups,
         min_start_time=(
             (datetime.now(timezone.utc) + timedelta(minutes=1))
-            .astimezone(ZoneInfo("America/Montevideo"))
+            .astimezone(URUGUAY_TZ)
             .strftime("%Y-%m-%dT%H:%M")
         ),
+        default_closes_on=(
+            datetime.now(timezone.utc).astimezone(URUGUAY_TZ).date()
+            + timedelta(days=2)
+        ).isoformat(),
     )
 
 
@@ -490,9 +501,8 @@ def create_auction():
             request.form.get("commission_percent", "0").replace(",", ".")
         )
         quantity = int(request.form.get("quantity", "1"))
-        duration_hours = int(request.form.get("duration_hours", ""))
     except (InvalidOperation, ValueError):
-        flash("Revisá los valores de precio, comisión, cantidad y duración.", "danger")
+        flash("Revisá los valores de precio, comisión y cantidad.", "danger")
         return redirect(url_for("private_area.dashboard"))
 
     if not title or len(title) > 160 or not description:
@@ -525,10 +535,6 @@ def create_auction():
     if quantity < 1 or quantity > 2147483647:
         flash("La cantidad debe ser un número entero positivo válido.", "danger")
         return redirect(url_for("private_area.dashboard"))
-    if duration_hours < 1 or duration_hours > 168:
-        flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
-        return redirect(url_for("private_area.dashboard"))
-
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     if start_mode == "now":
         starts_at = now
@@ -536,7 +542,7 @@ def create_auction():
         try:
             local_start = datetime.strptime(
                 request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"
-            ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+            ).replace(tzinfo=URUGUAY_TZ)
         except ValueError:
             flash("Ingresá una fecha y hora de inicio válidas.", "danger")
             return redirect(url_for("private_area.dashboard"))
@@ -549,12 +555,13 @@ def create_auction():
         return redirect(url_for("private_area.dashboard"))
 
     try:
-        closes_at = starts_at + timedelta(hours=duration_hours)
-    except (OverflowError, ValueError):
-        flash("La duración ingresada supera el máximo admitido.", "danger")
+        closes_at = _closing_datetime(request.form.get("closes_on", ""))
+    except ValueError:
+        flash("Ingresá una fecha de cierre válida.", "danger")
         return redirect(url_for("private_area.dashboard"))
-    if closes_at <= starts_at:
-        flash("La duración debe ser de al menos un segundo.", "danger")
+    duration = closes_at - starts_at
+    if duration < timedelta(hours=1) or duration > timedelta(hours=168):
+        flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
         return redirect(url_for("private_area.dashboard"))
 
     duplicate_lot = Auction.query.filter_by(
@@ -607,22 +614,12 @@ def edit_auction(auction_id: int):
     groups = AuctionGroup.query.order_by(AuctionGroup.name.asc()).all()
     now = datetime.now(timezone.utc)
     can_relaunch = not auction.is_active and not auction.is_upcoming
-    relaunch_duration_hours = max(
-        1,
-        min(
-            168,
-            int(
-                (
-                    auction.closes_at.replace(tzinfo=None)
-                    - auction.starts_at.replace(tzinfo=None)
-                ).total_seconds()
-                // 3600
-            ),
-        ),
-    )
     relaunch_starts_at = (now + timedelta(minutes=2)).replace(
         second=0, microsecond=0
     )
+    relaunch_closes_on = (
+        relaunch_starts_at.astimezone(URUGUAY_TZ).date() + timedelta(days=2)
+    ).isoformat()
     if request.method == "GET":
         return render_template(
             "private_auction_edit.html",
@@ -630,12 +627,12 @@ def edit_auction(auction_id: int):
             groups=groups,
             has_history=has_history,
             can_relaunch=can_relaunch,
-            relaunch_duration_hours=relaunch_duration_hours,
-            relaunch_starts_at=relaunch_starts_at.astimezone(
-                ZoneInfo("America/Montevideo")
-            ).strftime("%Y-%m-%dT%H:%M"),
+            relaunch_starts_at=relaunch_starts_at.astimezone(URUGUAY_TZ).strftime(
+                "%Y-%m-%dT%H:%M"
+            ),
+            relaunch_closes_on=relaunch_closes_on,
             relaunch_min_start=(now + timedelta(minutes=1))
-            .astimezone(ZoneInfo("America/Montevideo"))
+            .astimezone(URUGUAY_TZ)
             .strftime("%Y-%m-%dT%H:%M"),
         )
 
@@ -658,9 +655,8 @@ def edit_auction(auction_id: int):
                 request.form.get("commission_percent", "").replace(",", ".")
             )
             quantity = int(request.form.get("quantity", ""))
-            duration_hours = int(request.form.get("duration_hours", ""))
         except (InvalidOperation, ValueError):
-            flash("Revisá los datos y la duración del nuevo remate.", "danger")
+            flash("Revisá los datos del nuevo remate.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
         group = db.session.get(AuctionGroup, group_id) if group_id.isdigit() else None
@@ -695,16 +691,13 @@ def edit_auction(auction_id: int):
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        if duration_hours < 1 or duration_hours > 168:
-            flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
-            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
         if start_mode == "now":
             starts_at_utc = now_utc
         elif start_mode == "scheduled":
             try:
                 starts_at = datetime.strptime(
                     request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"
-                ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+                ).replace(tzinfo=URUGUAY_TZ)
             except ValueError:
                 flash("Ingresá una fecha y hora de inicio válidas.", "danger")
                 return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
@@ -715,7 +708,15 @@ def edit_auction(auction_id: int):
         else:
             flash("Indicá si el nuevo remate comienza ahora o próximamente.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
-        closes_at_utc = starts_at_utc + timedelta(hours=duration_hours)
+        try:
+            closes_at_utc = _closing_datetime(request.form.get("closes_on", ""))
+        except ValueError:
+            flash("Ingresá una fecha de cierre válida.", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
+        duration = closes_at_utc - starts_at_utc
+        if duration < timedelta(hours=1) or duration > timedelta(hours=168):
+            flash("La duración debe estar entre 1 y 168 horas (máximo 7 días).", "danger")
+            return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
         duplicate_lots = Auction.query.filter(
             Auction.group_id == group.id,
@@ -833,24 +834,18 @@ def edit_auction(auction_id: int):
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
 
         original_start_value = auction.starts_at_montevideo.strftime("%Y-%m-%dT%H:%M")
-        original_close_value = auction.closes_at_montevideo.strftime("%Y-%m-%dT%H:%M")
         submitted_start = request.form.get("starts_at", "")
-        submitted_close = request.form.get("closes_at", "")
+        submitted_close_date = request.form.get("closes_on", "")
         try:
             starts_at = auction.starts_at
             if submitted_start != original_start_value:
                 local_start = datetime.strptime(
                     submitted_start, "%Y-%m-%dT%H:%M"
-                ).replace(tzinfo=ZoneInfo("America/Montevideo"))
+                ).replace(tzinfo=URUGUAY_TZ)
                 starts_at = local_start.astimezone(timezone.utc).replace(tzinfo=None)
-            closes_at = auction.closes_at
-            if submitted_close != original_close_value:
-                local_close = datetime.strptime(
-                    submitted_close, "%Y-%m-%dT%H:%M"
-                ).replace(tzinfo=ZoneInfo("America/Montevideo"))
-                closes_at = local_close.astimezone(timezone.utc).replace(tzinfo=None)
+            closes_at = _closing_datetime(submitted_close_date)
         except ValueError:
-            flash("Ingresá fechas y horas de inicio y cierre válidas.", "danger")
+            flash("Ingresá una fecha de inicio y una fecha de cierre válidas.", "danger")
             return redirect(url_for("private_area.edit_auction", auction_id=auction.id))
         duration = closes_at.replace(tzinfo=None) - starts_at.replace(tzinfo=None)
         if duration < timedelta(hours=1) or duration > timedelta(hours=168):
@@ -907,8 +902,7 @@ def edit_auction(auction_id: int):
         auction.sale_mode = sale_mode
         if submitted_start != original_start_value:
             auction.starts_at = starts_at
-        if submitted_close != original_close_value:
-            auction.closes_at = closes_at
+        auction.closes_at = closes_at
     for photo_id in removed_photo_ids:
         db.session.delete(photos_by_id[photo_id])
     auction.photos.extend(photos)
@@ -989,8 +983,11 @@ def _deletion_confirmation(auctions: list[Auction], group: AuctionGroup, *, whol
                       else auction.closes_at.replace(tzinfo=timezone.utc)) <= now
                   and auction.bid_count and
                   (auction.id not in payments or payments[auction.id].status != "paid")]
-        return render_template("private_delete_confirm.html", auctions=auctions,
-                               group=group, whole_group=whole_group, unpaid=unpaid)
+        return render_template(
+            "private_delete_confirm.html", auctions=auctions, group=group,
+            whole_group=whole_group, unpaid=unpaid,
+            return_to_sales=not whole_group and request.form.get("return_to") == "sales",
+        )
     return None
 
 
@@ -1029,15 +1026,19 @@ def delete_group_auctions(group_id: int):
     group = db.session.get(AuctionGroup, group_id)
     if group is None:
         abort(404)
+    return_endpoint = (
+        "private_area.sales" if request.form.get("return_to") == "sales"
+        else "private_area.dashboard"
+    )
     raw_ids = request.form.getlist("auction_ids")
     try:
         auction_ids = list(dict.fromkeys(int(value) for value in raw_ids))
     except ValueError:
         flash("La selección de lotes no es válida.", "danger")
-        return redirect(url_for("private_area.dashboard"))
+        return redirect(url_for(return_endpoint))
     if not auction_ids or any(auction_id <= 0 for auction_id in auction_ids):
         flash("Seleccioná uno o más lotes para eliminar.", "warning")
-        return redirect(url_for("private_area.dashboard"))
+        return redirect(url_for(return_endpoint))
     auctions = (
         Auction.query.filter(
             Auction.group_id == group.id,

@@ -94,9 +94,9 @@
           <input class="form-control" id="starts-at" name="starts_at" type="datetime-local" value="{{ auction.starts_at_montevideo.strftime('%Y-%m-%dT%H:%M') }}" required>
         </div>
         <div class="col-md-6">
-          <label class="form-label" for="closes-at">Fecha y hora de cierre (Uruguay)</label>
-          <input class="form-control" id="closes-at" name="closes_at" type="datetime-local" value="{{ auction.closes_at_montevideo.strftime('%Y-%m-%dT%H:%M') }}" required>
-          <div class="form-text">La duración debe quedar entre 1 y 168 horas. Si no cambiás estas fechas, el tiempo restante de la cuenta regresiva se conserva exactamente.</div>
+          <label class="form-label" for="closes-on">Fecha de cierre (Uruguay)</label>
+          <input class="form-control" id="closes-on" name="closes_on" type="date" value="{{ auction.closes_at_montevideo.strftime('%Y-%m-%d') }}" required>
+          <div class="form-text">El cierre será a las 22:00 h de Uruguay; la duración debe quedar entre 1 y 168 horas.</div>
         </div>
       {% endif %}
       <div class="col-12">
@@ -203,9 +203,9 @@
           <input class="form-control" id="relaunch-starts-at" name="starts_at" type="datetime-local" min="{{ relaunch_min_start }}" value="{{ relaunch_starts_at }}">
         </div>
         <div class="col-md-6">
-          <label class="form-label" for="relaunch-duration">Duración del nuevo remate (horas)</label>
-          <input class="form-control" id="relaunch-duration" name="duration_hours" type="number" min="1" max="168" step="1" value="{{ relaunch_duration_hours }}" required>
-          <div class="form-text">El cierre se calculará automáticamente; duración entre 1 y 168 horas.</div>
+          <label class="form-label" for="relaunch-closes-on">Fecha de cierre (Uruguay)</label>
+          <input class="form-control" id="relaunch-closes-on" name="closes_on" type="date" value="{{ relaunch_closes_on }}" required>
+          <div class="form-text">El nuevo remate finalizará a las 22:00 h de Uruguay; duración entre 1 y 168 horas.</div>
         </div>
         <div class="col-12">
           <label class="form-label" for="relaunch-description">Descripción</label>
