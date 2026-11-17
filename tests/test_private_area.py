@@ -1196,6 +1196,10 @@ class PrivateAreaTest(unittest.TestCase):
         self.login()
         self.create_lot("UNSOLD-01")
         now = datetime.now(timezone.utc).replace(tzinfo=None)
+        closes_on = (
+            datetime.now(timezone.utc).astimezone(ZoneInfo("America/Montevideo")).date()
+            + timedelta(days=2)
+        ).isoformat()
         with self.app.app_context():
             auction = Auction.query.filter_by(lot_number="UNSOLD-01").one()
             auction_id = auction.id
@@ -1234,7 +1238,7 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "1",
                 "sale_mode": "lot",
                 "start_mode": "now",
-                "duration_hours": "24",
+                "closes_on": closes_on,
             },
             follow_redirects=True,
         )
@@ -1247,7 +1251,6 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertTrue(relaunch.is_active)
             relaunch_id = relaunch.id
             starts_at = relaunch.starts_at_montevideo.strftime("%Y-%m-%dT%H:%M")
-            closes_at = relaunch.closes_at_montevideo.strftime("%Y-%m-%dT%H:%M")
 
         edit_response = self.client.post(
             f"/area-privada/lotes/{relaunch_id}/editar",
@@ -1262,7 +1265,7 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "1",
                 "sale_mode": "lot",
                 "starts_at": starts_at,
-                "closes_at": closes_at,
+                "closes_on": closes_on,
             },
             follow_redirects=True,
         )
@@ -1288,7 +1291,7 @@ class PrivateAreaTest(unittest.TestCase):
                 "quantity": "1",
                 "sale_mode": "lot",
                 "start_mode": "now",
-                "duration_hours": "24",
+                "closes_on": closes_on,
             },
             follow_redirects=True,
         )
