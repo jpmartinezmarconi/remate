@@ -8,6 +8,8 @@ class AuctionImage(db.Model):
     )
     filename = db.Column(db.String(255), nullable=False)
     content_type = db.Column(db.String(32), nullable=False)
-    data = db.Column(db.LargeBinary, nullable=False)
+    data = db.Column(db.LargeBinary, nullable=True)
+    cloud_url = db.Column(db.String(2048), nullable=True)
+    cloud_public_id = db.Column(db.String(255), nullable=True)
 
     auction = db.relationship("Auction", back_populates="photos")

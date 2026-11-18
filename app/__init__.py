@@ -38,6 +38,7 @@ def create_app(config_class=Config):
     # Import models so Flask-Migrate sees every table in the metadata.
     import models  # noqa: F401
 
+    from .photo_storage import register_photo_commands
     from .routes import main_bp
     from routes.auction import auction_bp
     from routes.auth import auth_bp
@@ -53,6 +54,7 @@ def create_app(config_class=Config):
     app.register_blueprint(private_area_bp)
     app.register_blueprint(help_bp)
     app.register_blueprint(telegram_bp)
+    register_photo_commands(app)
 
     @app.before_request
     def load_current_user():

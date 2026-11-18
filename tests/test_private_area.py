@@ -42,6 +42,9 @@ class PrivateAreaConfig:
     PUBLIC_BASE_URL = "https://remate.example.test"
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    CLOUD_NAME_CLOUDINARY = "test-cloud"
+    API_KEY_CLOUDINARY = "test-key"
+    API_SECRET_CLOUDINARY = "test-secret"
 
 
 class PrivateAreaTest(unittest.TestCase):
@@ -61,6 +64,15 @@ class PrivateAreaTest(unittest.TestCase):
         self.addCleanup(self.bid_notification_patcher.stop)
         self.addCleanup(self.outbid_notification_patcher.stop)
         self.addCleanup(self.purchase_notification_patcher.stop)
+        self.photo_upload_patcher = patch(
+            "routes.private_area.upload_photo",
+            return_value=(
+                "https://res.cloudinary.com/test-cloud/image/upload/v1/remate/photo.png",
+                "remate/photo",
+            ),
+        )
+        self.photo_upload = self.photo_upload_patcher.start()
+        self.addCleanup(self.photo_upload_patcher.stop)
         self.app = create_app(PrivateAreaConfig)
         self.client = self.app.test_client()
         with self.app.app_context():
@@ -554,8 +566,107 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b'data-lightbox-next', detail.data)
         self.assertIn(b'photo-lightbox.js', detail.data)
         image_response = self.client.get(f"/area-privada/fotos/{image_id}")
-        self.assertEqual(image_response.status_code, 200)
-        self.assertEqual(image_response.mimetype, "image/png")
+        self.assertEqual(image_response.status_code, 302)
+        self.assertEqual(
+            image_response.location,
+            "https://res.cloudinary.com/test-cloud/image/upload/v1/remate/photo.png",
+        )
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(AuctionImage, image_id).data)
+
+    def test_failed_photo_upload_does_not_create_lot(self):
+        self.login()
+        self.photo_upload.side_effect = ValueError("Cloudinary unavailable")
+        response = self.create_lot(
+            "FAIL-01", photos=[(BytesIO(b"\x89PNG\r\n\x1a\nimage"), "foto.png")]
+        )
+        self.assertIn("No se pudieron subir las fotos", response.get_data(as_text=True))
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 0)
+
+    def test_partial_upload_failure_cleans_previously_uploaded_photos(self):
+        self.login()
+        self.photo_upload.side_effect = [
+            ("https://res.cloudinary.com/test-cloud/image/upload/v1/first.png", "remate/first"),
+            ValueError("Cloudinary unavailable"),
+        ]
+        with patch("routes.private_area.discard_uploaded_photos") as discard:
+            response = self.create_lot("FAIL-02", photos=[
+                (BytesIO(b"\x89PNG\r\n\x1a\nfirst"), "first.png"),
+                (BytesIO(b"\x89PNG\r\n\x1a\nsecond"), "second.png"),
+            ])
+        self.assertIn("No se pudieron subir las fotos", response.get_data(as_text=True))
+        self.assertEqual(discard.call_args.args[0][0].cloud_public_id, "remate/first")
+        with self.app.app_context():
+            self.assertEqual(Auction.query.count(), 0)
+
+    def test_cloudinary_upload_uses_configured_credentials_and_validates_response(self):
+        from app.photo_storage import upload_photo
+
+        with self.app.app_context(), patch("app.photo_storage.cloudinary.uploader.upload") as upload:
+            upload.return_value = {
+                "public_id": "remate/test",
+                "secure_url": "https://res.cloudinary.com/test-cloud/image/upload/v1/remate/test.png",
+            }
+            url, public_id = upload_photo(b"image", "remate/test")
+            self.assertEqual(public_id, "remate/test")
+            self.assertEqual(url, upload.return_value["secure_url"])
+            self.assertEqual(upload.call_args.kwargs["cloud_name"], "test-cloud")
+            self.assertEqual(upload.call_args.kwargs["api_key"], "test-key")
+            self.assertEqual(upload.call_args.kwargs["api_secret"], "test-secret")
+            upload.return_value["secure_url"] = "https://example.test/photo.png"
+            with self.assertRaises(ValueError):
+                upload_photo(b"image", "remate/test")
+
+    def test_legacy_photo_remains_available_before_migration(self):
+        self.login()
+        self.create_lot("LEGACY-01")
+        with self.app.app_context():
+            image = AuctionImage(
+                auction=Auction.query.one(), filename="old.png",
+                content_type="image/png", data=b"legacy-image"
+            )
+            db.session.add(image)
+            db.session.commit()
+            image_id = image.id
+        response = self.client.get(f"/area-privada/fotos/{image_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"legacy-image")
+
+    def test_migration_verifies_image_before_removing_database_bytes(self):
+        self.login()
+        self.create_lot("MIG-01")
+        data = b"\x89PNG\r\n\x1a\noriginal"
+        with self.app.app_context():
+            auction = Auction.query.one()
+            image = AuctionImage(
+                auction=auction, filename="old.png", content_type="image/png", data=data
+            )
+            db.session.add(image)
+            db.session.commit()
+            photo_id = image.id
+
+        with patch("app.photo_storage.upload_photo", return_value=(
+            "https://res.cloudinary.com/test-cloud/image/upload/v1/old.png",
+            "remate/migrated/old",
+        )), patch("app.photo_storage.urlopen") as open_url:
+            open_url.return_value.__enter__.return_value.read.return_value = b"wrong"
+            result = self.app.test_cli_runner().invoke(args=["migrate-photos-to-cloudinary"])
+            self.assertNotEqual(result.exit_code, 0)
+            with self.app.app_context():
+                image = db.session.get(AuctionImage, photo_id)
+                self.assertEqual(image.data, data)
+                self.assertIsNone(image.cloud_url)
+
+            open_url.return_value.__enter__.return_value.read.return_value = data
+            result = self.app.test_cli_runner().invoke(args=["migrate-photos-to-cloudinary"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            with self.app.app_context():
+                image = db.session.get(AuctionImage, photo_id)
+                self.assertIsNone(image.data)
+                self.assertEqual(image.cloud_public_id, "remate/migrated/old")
+            result = self.app.test_cli_runner().invoke(args=["migrate-photos-to-cloudinary"])
+            self.assertIn("Fotos migradas en esta ejecución: 0", result.output)
 
     def test_creates_groups_separately_and_assigns_lots_to_them(self):
         self.login()
@@ -771,7 +882,9 @@ class PrivateAreaTest(unittest.TestCase):
 
     def test_finished_lot_can_be_relaunched_without_losing_previous_bids(self):
         self.login()
-        self.create_lot("RELIST-01")
+        self.create_lot(
+            "RELIST-01", photos=[(BytesIO(b"\x89PNG\r\n\x1a\nimage"), "photo.png")]
+        )
         user_id = self.login_user()
         with self.app.app_context():
             previous = Auction.query.one()
@@ -831,6 +944,11 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(relaunch.starting_price, Decimal("200.00"))
             self.assertEqual(relaunch.current_price, Decimal("200.00"))
             self.assertEqual(relaunch.bid_count, 0)
+            self.assertEqual(relaunch.photos[0].cloud_url, previous.photos[0].cloud_url)
+            self.assertEqual(
+                relaunch.photos[0].cloud_public_id, previous.photos[0].cloud_public_id
+            )
+            self.assertIsNone(relaunch.photos[0].data)
             self.assertTrue(relaunch.is_upcoming)
             self.assertEqual(relaunch.closes_at_montevideo.hour, 22)
 

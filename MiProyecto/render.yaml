@@ -12,6 +12,12 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: CLOUD_NAME_CLOUDINARY
+        sync: false
+      - key: API_KEY_CLOUDINARY
+        sync: false
+      - key: API_SECRET_CLOUDINARY
+        sync: false
       - key: PASSWORD_AREA_PRIVADA
         sync: false
       - key: TELEGRAM_BOT_TOKEN

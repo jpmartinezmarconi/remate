@@ -24,12 +24,15 @@ from flask import (
     url_for,
 )
 from sqlalchemy import func, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
+from cloudinary.exceptions import Error as CloudinaryError
 
 from app.auction_reminders import _mail_configuration, send_due_auction_outbid_notifications
 from app.database import db
 from app.mail_message import transactional_message
+from app.photo_storage import discard_uploaded_photos, upload_photo
 from models.auction import Auction
 from models.auction_closing_reminder import AuctionClosingReminder
 from models.auction_completion_notification import AuctionCompletionNotification
@@ -88,7 +91,7 @@ def _image_content_type(data: bytes) -> str | None:
 
 
 def _uploaded_photos() -> list[AuctionImage] | None:
-    photos = []
+    pending = []
     for uploaded in request.files.getlist("photos"):
         if not uploaded.filename:
             continue
@@ -101,14 +104,32 @@ def _uploaded_photos() -> list[AuctionImage] | None:
             flash("Usá fotos JPG, PNG, GIF o WebP.", "danger")
             return None
         filename = secure_filename(uploaded.filename) or "foto"
-        photos.append(
-            AuctionImage(
-                filename=filename[:255],
-                content_type=content_type,
-                data=data,
-            )
-        )
+        pending.append((filename[:255], content_type, data))
+    photos = []
+    try:
+        for filename, content_type, data in pending:
+            url, public_id = upload_photo(data)
+            photos.append(AuctionImage(
+                filename=filename, content_type=content_type,
+                cloud_url=url, cloud_public_id=public_id,
+            ))
+    except (CloudinaryError, OSError, ValueError):
+        current_app.logger.exception("No se pudieron subir fotos a Cloudinary.")
+        discard_uploaded_photos(photos)
+        flash("No se pudieron subir las fotos. Intentá nuevamente.", "danger")
+        return None
     return photos
+
+
+def _commit_auction():
+    try:
+        db.session.commit()
+        return True
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("No se pudo guardar el lote.")
+        flash("No se pudo guardar el lote. Intentá nuevamente.", "danger")
+        return False
 
 
 def _featured_group_count(now: datetime) -> int:
@@ -600,7 +621,8 @@ def create_auction():
         photos=photos,
     )
     db.session.add(auction)
-    db.session.commit()
+    if not _commit_auction():
+        return redirect(url_for("private_area.dashboard"))
     flash(f"El lote {lot_number} se publicó correctamente.", "success")
     return redirect(url_for("private_area.dashboard"))
 
@@ -737,6 +759,8 @@ def edit_auction(auction_id: int):
                 filename=photo.filename,
                 content_type=photo.content_type,
                 data=photo.data,
+                cloud_url=photo.cloud_url,
+                cloud_public_id=photo.cloud_public_id,
             )
             for photo in auction.photos
         ]
@@ -757,7 +781,8 @@ def edit_auction(auction_id: int):
             photos=copied_photos + photos,
         )
         db.session.add(relaunch)
-        db.session.commit()
+        if not _commit_auction():
+            return redirect(url_for("private_area.edit_auction", auction_id=auction_id))
         flash(f"El lote {lot_number} se publicó nuevamente en un nuevo remate.", "success")
         return redirect(url_for("private_area.dashboard"))
 
@@ -906,7 +931,8 @@ def edit_auction(auction_id: int):
     for photo_id in removed_photo_ids:
         db.session.delete(photos_by_id[photo_id])
     auction.photos.extend(photos)
-    db.session.commit()
+    if not _commit_auction():
+        return redirect(url_for("private_area.edit_auction", auction_id=auction_id))
     flash(f"El lote {auction.display_lot_number} se actualizó correctamente.", "success")
     return redirect(url_for("private_area.dashboard"))
 
@@ -1084,6 +1110,11 @@ def update_home_feature(auction_id: int):
 @private_area_bp.get("/fotos/<int:photo_id>")
 def photo(photo_id: int):
     image = db.get_or_404(AuctionImage, photo_id)
+    if image.cloud_url:
+        return redirect(image.cloud_url, code=302)
+    if image.data is None:
+        current_app.logger.error("La foto %s no tiene contenido.", photo_id)
+        abort(500)
     return send_file(
         BytesIO(image.data),
         mimetype=image.content_type,
