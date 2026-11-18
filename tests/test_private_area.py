@@ -1166,6 +1166,25 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertEqual(AuctionPayment.query.one().status, "pending")
         self.assertIn("Elegir cómo pagar", self.client.get("/cuenta").get_data(as_text=True))
 
+    def test_account_lists_finished_participated_lots_for_24_hours(self):
+        self.login()
+        self.create_lot("RECENT-01")
+        self.create_lot("OLD-01")
+        winner_id = self.login_user("other-winner")
+        loser_id = self.login_user("loser")
+        with self.app.app_context():
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            for lot, hours in (("RECENT-01", 2), ("OLD-01", 25)):
+                auction = Auction.query.filter_by(lot_number=lot).one()
+                auction.starts_at = now - timedelta(hours=hours + 1)
+                auction.closes_at = now - timedelta(hours=hours)
+                db.session.add(Bid(amount=100, auction=auction, user_id=loser_id))
+                db.session.add(Bid(amount=150, auction=auction, user_id=winner_id))
+            db.session.commit()
+        page = self.client.get("/cuenta").get_data(as_text=True)
+        self.assertIn("Artículo RECENT-01", page)
+        self.assertNotIn("Artículo OLD-01", page)
+
     def test_existing_payment_method_is_preserved_when_marked_paid(self):
         self.login()
         self.create_lot("PAY-EXISTING")
@@ -1291,8 +1310,8 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn("Artículo LIVE-01", active_page)
         self.assertIn("data-auction-countdown", active_page)
         self.assertNotIn("Artículo FUTURE-01", active_page)
-        self.assertIn("Artículo SOLD-01", active_page)
-        self.assertIn("SUBASTADO", active_page)
+        self.assertNotIn("Artículo SOLD-01", active_page)
+        self.assertNotIn("Lotes subastados", active_page)
         self.assertIn("Artículo ENDED-01", active_page)
         self.assertIn("Artículo FUTURE-01", upcoming_page)
         self.assertNotIn("Artículo LIVE-01", upcoming_page)
@@ -1303,7 +1322,7 @@ class PrivateAreaTest(unittest.TestCase):
         )
         with self.app.app_context():
             sold_id = Auction.query.filter_by(lot_number="SOLD-01").one().id
-        self.assertIn(f'href="/subasta/{sold_id}"', active_page)
+        self.assertNotIn(f'href="/subasta/{sold_id}"', active_page)
         result_page = self.client.get(f"/subasta/{sold_id}")
         self.assertEqual(result_page.status_code, 200)
         result_html = result_page.get_data(as_text=True)

@@ -105,7 +105,13 @@ def dashboard():
     participated_by_id = {}
     for bid in bid_rows:
         participated_by_id.setdefault(bid.auction_id, bid.auction)
-    participated = list(participated_by_id.values())
+    # Los lotes finalizados solo se listan 24 horas; los ganados siguen en "Subastas que gané".
+    visible_since = now - timedelta(hours=24)
+    participated = [
+        auction
+        for auction in participated_by_id.values()
+        if auction.closes_at > visible_since
+    ]
 
     closed_bids = (
         Bid.query.join(Auction)

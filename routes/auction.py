@@ -193,14 +193,6 @@ def active_auctions():
         .order_by(Auction.group_name.asc(), Auction.closes_at.asc())
         .all()
     )
-    sold_auctions = (
-        Auction.query.filter(
-            Auction.closes_at <= now,
-            Auction.bids.any(),
-        )
-        .order_by(Auction.closes_at.desc(), Auction.id.desc())
-        .all()
-    )
     unsold_auctions = (
         Auction.query.filter(
             Auction.closes_at <= now,
@@ -210,11 +202,10 @@ def active_auctions():
         .order_by(Auction.closes_at.desc(), Auction.id.desc())
         .all()
     )
-    listed_auctions = auctions + sold_auctions + unsold_auctions
+    listed_auctions = auctions + unsold_auctions
     return render_template(
         "active_auctions.html",
         auctions=auctions,
-        sold_auctions=sold_auctions,
         unsold_auctions=unsold_auctions,
         now_timestamp=now.replace(tzinfo=timezone.utc).timestamp(),
         cover_photos=cover_photo_ids(listed_auctions),

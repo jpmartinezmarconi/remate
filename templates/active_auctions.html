@@ -45,22 +45,5 @@
       </div>
     </section>
   {% endif %}
-  {% if sold_auctions %}
-    <section class="sold-auctions-section mt-5" aria-labelledby="sold-auctions-title">
-      <div class="section-heading">
-        <div><span class="section-kicker">REMATES FINALIZADOS</span><h2 id="sold-auctions-title">Lotes subastados</h2></div>
-        <span class="auction-count">{{ sold_auctions|length }} lote{{ '' if sold_auctions|length == 1 else 's' }}</span>
-      </div>
-      <p class="text-secondary">Estos lotes ya se adjudicaron y se muestran como referencia.</p>
-      {% from "_auction_card.html" import render_auction_card with context %}
-      <div class="row g-3">
-        {% for auction in sold_auctions %}
-          <div class="col-sm-6 col-lg-4 col-xl-3">
-            {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
-          </div>
-        {% endfor %}
-      </div>
-    </section>
-  {% endif %}
 </section>
 {% endblock %}
