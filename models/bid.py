@@ -12,7 +12,9 @@ class Bid(db.Model):
         default=lambda: datetime.now(timezone.utc),
         index=True,
     )
-    auction_id = db.Column(db.Integer, db.ForeignKey("auction.id"), nullable=False)
+    auction_id = db.Column(
+        db.Integer, db.ForeignKey("auction.id"), nullable=False, index=True
+    )
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
     auction = db.relationship("Auction", back_populates="bids")

@@ -13,8 +13,8 @@
         <h2 class="auction-group-title">{{ group_name }}</h2>
         <div class="row g-3">
           {% for auction in group_auctions %}
-            <div class="col-sm-6 col-lg-4 col-xl-3"{% if not auction.bid_count %} data-unsold-expire-delay="{{ ((auction.closes_at_montevideo.timestamp() - now_timestamp + 86400) * 1000)|round(0, 'ceil')|int }}"{% endif %}>
-              {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
+            <div class="col-sm-6 col-lg-4 col-xl-3"{% if not bid_counts.get(auction.id, 0) %} data-unsold-expire-delay="{{ ((auction.closes_at_montevideo.timestamp() - now_timestamp + 86400) * 1000)|round(0, 'ceil')|int }}"{% endif %}>
+              {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids, bid_counts.get(auction.id, 0)) }}
             </div>
           {% endfor %}
         </div>
@@ -39,7 +39,7 @@
       <div class="row g-3">
         {% for auction in unsold_auctions %}
           <div class="col-sm-6 col-lg-4 col-xl-3" data-unsold-expire-delay="{{ ((auction.closes_at_montevideo.timestamp() - now_timestamp + 86400) * 1000)|round(0, 'ceil')|int }}">
-            {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids) }}
+            {{ render_auction_card(auction, cover_photos.get(auction.id), favorite_auction_ids, bid_counts.get(auction.id, 0)) }}
           </div>
         {% endfor %}
       </div>

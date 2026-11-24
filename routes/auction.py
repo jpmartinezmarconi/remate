@@ -38,17 +38,46 @@ def utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def cover_photo_ids(auctions: list[Auction]) -> dict[int, int]:
+def cover_photo_sources(auctions: list[Auction]) -> dict[int, str]:
     auction_ids = [auction.id for auction in auctions]
     if not auction_ids:
         return {}
-    rows = (
-        db.session.query(AuctionImage.auction_id, func.min(AuctionImage.id))
+    first_photos = (
+        db.session.query(
+            AuctionImage.auction_id.label("auction_id"),
+            func.min(AuctionImage.id).label("photo_id"),
+        )
         .filter(AuctionImage.auction_id.in_(auction_ids))
         .group_by(AuctionImage.auction_id)
+        .subquery()
+    )
+    rows = (
+        db.session.query(
+            AuctionImage.auction_id,
+            AuctionImage.id,
+            AuctionImage.cloud_url,
+        )
+        .join(first_photos, AuctionImage.id == first_photos.c.photo_id)
         .all()
     )
-    return {auction_id: photo_id for auction_id, photo_id in rows}
+    return {
+        auction_id: cloud_url
+        or url_for("private_area.photo", photo_id=photo_id)
+        for auction_id, photo_id, cloud_url in rows
+    }
+
+
+def bid_counts(auctions: list[Auction]) -> dict[int, int]:
+    auction_ids = list(dict.fromkeys(auction.id for auction in auctions))
+    if not auction_ids:
+        return {}
+    rows = (
+        db.session.query(Bid.auction_id, func.count(Bid.id))
+        .filter(Bid.auction_id.in_(auction_ids))
+        .group_by(Bid.auction_id)
+        .all()
+    )
+    return {auction_id: count for auction_id, count in rows}
 
 
 def minimum_bid_increment(current_price: Decimal) -> Decimal:
@@ -175,7 +204,8 @@ def home():
         "home.html",
         auctions=auctions,
         hero_auctions=hero_auctions,
-        cover_photos=cover_photo_ids(card_auctions),
+        cover_photos=cover_photo_sources(card_auctions),
+        bid_counts=bid_counts(card_auctions),
         favorite_auctions=favorite_auctions,
         favorite_auction_ids=favorite_auction_ids,
         recent_auctions=recent_auctions,
@@ -208,7 +238,8 @@ def active_auctions():
         auctions=auctions,
         unsold_auctions=unsold_auctions,
         now_timestamp=now.replace(tzinfo=timezone.utc).timestamp(),
-        cover_photos=cover_photo_ids(listed_auctions),
+        cover_photos=cover_photo_sources(listed_auctions),
+        bid_counts=bid_counts(listed_auctions),
         favorite_auction_ids=_favorite_auction_ids(
             g.current_user.id if g.current_user else None
         ),
@@ -230,7 +261,8 @@ def upcoming_auctions():
     return render_template(
         "upcoming_auctions.html",
         auctions=auctions,
-        cover_photos=cover_photo_ids(auctions),
+        cover_photos=cover_photo_sources(auctions),
+        bid_counts=bid_counts(auctions),
         favorite_auction_ids=_favorite_auction_ids(
             g.current_user.id if g.current_user else None
         ),
@@ -240,6 +272,12 @@ def upcoming_auctions():
 @auction_bp.get("/subasta/<int:auction_id>")
 def detail(auction_id: int):
     auction = db.get_or_404(Auction, auction_id)
+    photos = (
+        db.session.query(AuctionImage.id, AuctionImage.cloud_url)
+        .filter(AuctionImage.auction_id == auction.id)
+        .order_by(AuctionImage.id.asc())
+        .all()
+    )
     leading_bid = _leading_bid(auction.id)
     has_been_outbid = bool(
         g.current_user
@@ -270,9 +308,12 @@ def detail(auction_id: int):
             ).first()
             is not None
         )
+    detail_bid_counts = bid_counts([auction] + related_auctions)
     return render_template(
         "auction_detail.html",
         auction=auction,
+        photos=photos,
+        bid_count=detail_bid_counts.get(auction.id, 0),
         leading_bid=leading_bid,
         reminder_subscribed=reminder_subscribed,
         is_favorite=(
@@ -288,7 +329,8 @@ def detail(auction_id: int):
             g.current_user.id if g.current_user else None
         ),
         related_auctions=related_auctions,
-        cover_photos=cover_photo_ids(related_auctions),
+        cover_photos=cover_photo_sources(related_auctions),
+        bid_counts=detail_bid_counts,
         is_current_bidder=(
             g.current_user is not None
             and leading_bid is not None

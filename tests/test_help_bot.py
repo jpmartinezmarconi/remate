@@ -6,6 +6,7 @@ from app import create_app
 from app.database import db
 from models.auction import Auction
 from models.auction_group import AuctionGroup
+from routes.help import _answer
 
 
 class HelpBotConfig:
@@ -62,69 +63,61 @@ class HelpBotTest(unittest.TestCase):
             db.drop_all()
 
     def ask(self, message):
-        return self.client.post("/api/ayuda", json={"message": message})
+        with self.app.test_request_context():
+            return _answer(message)
 
     def test_lists_active_and_upcoming_lots_with_current_public_data(self):
-        active = self.ask("¿Qué subastas están activas?")
-        self.assertEqual(active.status_code, 200)
-        self.assertIn("Reloj antiguo", active.json["reply"])
-        self.assertIn("Oferta actual: $U 125.00", active.json["reply"])
-        self.assertNotIn("Juego de sillas", active.json["reply"])
+        active_reply, _ = self.ask("¿Qué subastas están activas?")
+        self.assertIn("Reloj antiguo", active_reply)
+        self.assertIn("Oferta actual: $U 125.00", active_reply)
+        self.assertNotIn("Juego de sillas", active_reply)
 
-        upcoming = self.ask("¿Cuáles son las próximas subastas?")
-        self.assertEqual(upcoming.status_code, 200)
-        self.assertIn("Lote U-03: Juego de sillas (Próximamente)", upcoming.json["reply"])
-        self.assertIn("Oferta por unidad; cantidad: 4", upcoming.json["reply"])
-        self.assertTrue(any(link["url"] == "/subasta/2" for link in upcoming.json["links"]))
+        upcoming_reply, upcoming_links = self.ask("¿Cuáles son las próximas subastas?")
+        self.assertIn("Lote U-03: Juego de sillas (Próximamente)", upcoming_reply)
+        self.assertIn("Oferta por unidad; cantidad: 4", upcoming_reply)
+        self.assertTrue(any(link["url"] == "/subasta/2" for link in upcoming_links))
 
     def test_answers_lot_number_and_common_questions(self):
-        lot = self.ask("¿Qué pasa con el lote R-12?")
-        self.assertIn("Reloj antiguo", lot.json["reply"])
-        self.assertIn("está activa", lot.json["reply"])
+        lot_reply, _ = self.ask("¿Qué pasa con el lote R-12?")
+        self.assertIn("Reloj antiguo", lot_reply)
+        self.assertIn("está activa", lot_reply)
 
-        title_search = self.ask("¿A qué hora cierra el reloj antiguo?")
-        self.assertIn("Reloj antiguo", title_search.json["reply"])
-        self.assertIn("Finaliza el", title_search.json["reply"])
+        title_reply, _ = self.ask("¿A qué hora cierra el reloj antiguo?")
+        self.assertIn("Reloj antiguo", title_reply)
+        self.assertIn("Finaliza el", title_reply)
 
-        address = self.ask("¿Dónde puedo retirar?")
-        self.assertIn("Av. 8 de Octubre 4336/4328", address.json["reply"])
+        address_reply, _ = self.ask("¿Dónde puedo retirar?")
+        self.assertIn("Av. 8 de Octubre 4336/4328", address_reply)
 
-        contact = self.ask("¿Cuál es el email y teléfono?")
-        self.assertIn("096 164 645", contact.json["reply"])
+        contact_reply, contact_links = self.ask("¿Cuál es el email y teléfono?")
+        self.assertIn("096 164 645", contact_reply)
         self.assertIn(
             "https://wa.me/59896164645",
-            next(link["url"] for link in contact.json["links"] if link["label"] == "WhatsApp"),
+            next(link["url"] for link in contact_links if link["label"] == "WhatsApp"),
         )
-        self.assertIn("remateonline@yahoo.com", contact.json["reply"])
-        self.assertNotIn("info@rematemartinez.com.uy", contact.json["reply"])
+        self.assertIn("remateonline@yahoo.com", contact_reply)
+        self.assertNotIn("info@rematemartinez.com.uy", contact_reply)
 
-        commission = self.ask("¿Qué comisión se cobra?")
-        self.assertIn("20%", commission.json["reply"])
-        self.assertIn("ficha del lote", commission.json["reply"])
+        commission_reply, _ = self.ask("¿Qué comisión se cobra?")
+        self.assertIn("20%", commission_reply)
+        self.assertIn("ficha del lote", commission_reply)
 
-        payment = self.ask("¿Cómo pago por transferencia?")
-        self.assertIn("001901236", payment.json["reply"])
-        self.assertIn("JUAN MARTINEZ", payment.json["reply"])
-        self.assertIn("9102129", payment.json["reply"])
+        payment_reply, _ = self.ask("¿Cómo pago por transferencia?")
+        self.assertIn("001901236", payment_reply)
+        self.assertIn("JUAN MARTINEZ", payment_reply)
+        self.assertIn("9102129", payment_reply)
 
-        notifications = self.ask("¿Puedo recibir un recordatorio?")
-        self.assertIn("24 horas antes", notifications.json["reply"])
+        notifications_reply, _ = self.ask("¿Puedo recibir un recordatorio?")
+        self.assertIn("24 horas antes", notifications_reply)
 
-    def test_validates_help_question_and_page_widget(self):
-        self.assertEqual(self.client.post("/api/ayuda", json={}).status_code, 400)
-        self.assertEqual(
-            self.ask("x" * 301).status_code,
-            400,
-        )
-        self.assertEqual(
-            self.client.post("/api/ayuda", data="{}", content_type="text/plain").status_code,
-            400,
-        )
+    def test_web_assistant_is_removed_and_telegram_qr_remains(self):
+        self.assertEqual(self.client.post("/api/ayuda", json={}).status_code, 404)
         page = self.client.get("/")
-        self.assertIn(b"help-bot-launcher", page.data)
-        self.assertIn(b"help-bot.js", page.data)
-        self.assertIn(b"data-help-question=", page.data)
-        self.assertIn(b">Comisi", page.data)
+        self.assertNotIn(b"help-bot", page.data)
+        self.assertNotIn(b"help-bot.js", page.data)
+        self.assertIn(b"telegram-qr.svg", page.data)
+        self.assertIn(b"https://t.me/rematemartinezbot", page.data)
+        self.assertIn(b"20% de comisi", page.data)
         self.assertIn(b"mailto:remateonline@yahoo.com", page.data)
         self.assertNotIn(b"info@rematemartinez.com.uy", page.data)
 

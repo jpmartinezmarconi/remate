@@ -44,7 +44,6 @@ def create_app(config_class=Config):
     from routes.auth import auth_bp
     from routes.account import account_bp
     from routes.private_area import private_area_bp
-    from routes.help import help_bp
     from routes.telegram_bot import telegram_bp
 
     app.register_blueprint(main_bp)
@@ -52,7 +51,6 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
     app.register_blueprint(account_bp)
     app.register_blueprint(private_area_bp)
-    app.register_blueprint(help_bp)
     app.register_blueprint(telegram_bp)
     register_photo_commands(app)
 

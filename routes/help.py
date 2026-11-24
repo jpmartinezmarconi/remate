@@ -1,14 +1,13 @@
 import re
 import unicodedata
 
-from flask import Blueprint, current_app, jsonify, request, url_for
+from flask import current_app, url_for
 
 from app.database import db
 from models.auction import Auction
 from .auction import utc_now_naive
 
 
-help_bp = Blueprint("help", __name__, url_prefix="/api/ayuda")
 MAX_QUESTION_LENGTH = 300
 MAX_AUCTIONS_IN_REPLY = 8
 PHONE = "096 164 645"
@@ -233,21 +232,3 @@ def _answer(question: str) -> tuple[str, list[dict[str, str]]]:
         "Probá con una pregunta más concreta o escribinos al correo.",
         [{"label": "Enviar correo", "url": f"mailto:{email}"}],
     )
-
-
-@help_bp.post("")
-def answer_help_question():
-    if request.content_length and request.content_length > 2048:
-        return jsonify(error="La solicitud supera el tamaño permitido."), 413
-    if not request.is_json:
-        return jsonify(error="Enviá la pregunta como JSON."), 400
-    payload = request.get_json(silent=True)
-    question = payload.get("message") if isinstance(payload, dict) else None
-    if not isinstance(question, str) or not question.strip():
-        return jsonify(error="Escribí una pregunta para poder ayudarte."), 400
-    question = question.strip()
-    if len(question) > MAX_QUESTION_LENGTH:
-        return jsonify(error=f"La pregunta no puede superar {MAX_QUESTION_LENGTH} caracteres."), 400
-
-    reply, links = _answer(question)
-    return jsonify(reply=reply, links=links)

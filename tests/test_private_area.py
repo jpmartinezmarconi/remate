@@ -202,6 +202,28 @@ class PrivateAreaTest(unittest.TestCase):
             self.assertIn(f'href="/subasta/{auction_id}"', page)
         self.assertIn("home-slider.js", page)
 
+    def test_active_page_aggregates_bid_counts_in_one_query(self):
+        self.login()
+        for index in range(3):
+            self.create_lot(f"COUNT-{index}")
+
+        statements = []
+
+        def capture_statement(connection, cursor, statement, parameters, context, executemany):
+            if "count(bid.id)" in statement.lower():
+                statements.append(statement)
+
+        with self.app.app_context():
+            event.listen(db.engine, "before_cursor_execute", capture_statement)
+            try:
+                response = self.client.get("/subastas-activas")
+            finally:
+                event.remove(db.engine, "before_cursor_execute", capture_statement)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(statements), 1)
+        self.assertIn("GROUP BY", statements[0].upper())
+
     def create_lot(self, lot_number, *, featured=False, photos=None, **overrides):
         group_name = overrides.pop("group_name", "Colección")
         if group_name not in self.created_groups:
@@ -556,6 +578,10 @@ class PrivateAreaTest(unittest.TestCase):
         home = self.client.get("/")
         self.assertIn(b"Art\xc3\xadculo U-01", home.data)
         self.assertIn(b"3 unidades", home.data)
+        self.assertIn(
+            b"https://res.cloudinary.com/test-cloud/image/upload/v1/remate/photo.png",
+            home.data,
+        )
         active = self.client.get("/subastas-activas")
         self.assertIn(b"Colecci\xc3\xb3n", active.data)
         detail = self.client.get(f"/subasta/{auction_id}")
@@ -567,6 +593,10 @@ class PrivateAreaTest(unittest.TestCase):
         self.assertIn(b'photo-lightbox.js', detail.data)
         image_response = self.client.get(f"/area-privada/fotos/{image_id}")
         self.assertEqual(image_response.status_code, 302)
+        self.assertEqual(
+            image_response.headers["Cache-Control"],
+            "public, max-age=31536000, immutable",
+        )
         self.assertEqual(
             image_response.location,
             "https://res.cloudinary.com/test-cloud/image/upload/v1/remate/photo.png",
@@ -632,6 +662,10 @@ class PrivateAreaTest(unittest.TestCase):
         response = self.client.get(f"/area-privada/fotos/{image_id}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, b"legacy-image")
+        self.assertEqual(
+            response.headers["Cache-Control"],
+            "public, max-age=31536000, immutable",
+        )
 
     def test_migration_verifies_image_before_removing_database_bytes(self):
         self.login()

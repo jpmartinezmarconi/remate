@@ -1109,16 +1109,33 @@ def update_home_feature(auction_id: int):
 
 @private_area_bp.get("/fotos/<int:photo_id>")
 def photo(photo_id: int):
-    image = db.get_or_404(AuctionImage, photo_id)
-    if image.cloud_url:
-        return redirect(image.cloud_url, code=302)
-    if image.data is None:
+    cloud_url = db.session.execute(
+        db.select(AuctionImage.cloud_url).where(AuctionImage.id == photo_id)
+    ).scalar_one_or_none()
+    if cloud_url is None:
+        image = db.session.execute(
+            db.select(
+                AuctionImage.content_type,
+                AuctionImage.filename,
+                AuctionImage.data,
+            ).where(AuctionImage.id == photo_id)
+        ).one_or_none()
+        if image is None:
+            abort(404)
+        content_type, filename, data = image
+    else:
+        response = redirect(cloud_url, code=302)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+    if data is None:
         current_app.logger.error("La foto %s no tiene contenido.", photo_id)
         abort(500)
-    return send_file(
-        BytesIO(image.data),
-        mimetype=image.content_type,
-        download_name=image.filename,
+    response = send_file(
+        BytesIO(data),
+        mimetype=content_type,
+        download_name=filename,
         as_attachment=False,
-        max_age=86400,
+        max_age=31536000,
     )
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response

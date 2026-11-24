@@ -5,11 +5,11 @@
   <a href="{{ url_for('auction.home') }}" class="back-link">← Volver a las subastas</a>
   <div class="row g-5 mt-1">
     <div class="col-lg-7">
-      {% if auction.photos %}
+      {% if photos %}
         <div class="detail-gallery">
-          {% for photo in auction.photos %}
-            <button class="detail-image-trigger" type="button" data-lightbox-image="{{ url_for('private_area.photo', photo_id=photo.id) }}" data-lightbox-alt="{{ auction.title }} · foto {{ loop.index }}" aria-label="Ampliar foto {{ loop.index }}: {{ auction.title }}">
-              <img class="detail-image" src="{{ url_for('private_area.photo', photo_id=photo.id) }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}">
+          {% for photo in photos %}
+            <button class="detail-image-trigger" type="button" data-lightbox-image="{{ photo.cloud_url or url_for('private_area.photo', photo_id=photo.id) }}" data-lightbox-alt="{{ auction.title }} · foto {{ loop.index }}" aria-label="Ampliar foto {{ loop.index }}: {{ auction.title }}">
+              <img class="detail-image" src="{{ photo.cloud_url or url_for('private_area.photo', photo_id=photo.id) }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}">
               <span class="detail-image-hint" aria-hidden="true">⌕ Ampliar</span>
             </button>
           {% endfor %}
@@ -23,7 +23,7 @@
       <div class="mt-4"><span class="eyebrow text-clay">LOTE Nº {{ auction.display_lot_number }} · {{ auction.group_name }}</span><h1 class="display-6 fw-bold mt-2">{{ auction.title }}</h1><p class="text-secondary detail-description">{{ auction.description }}</p></div>
     </div>
     <div class="col-lg-5"><aside class="bid-panel">
-      <span class="eyebrow text-clay" data-auction-status>{% if auction.is_upcoming %}PRÓXIMAMENTE{% elif auction.is_active %}SUBASTA EN CURSO{% elif auction.bid_count %}SUBASTADO{% else %}SUBASTA FINALIZADA{% endif %}</span>
+      <span class="eyebrow text-clay" data-auction-status>{% if auction.is_upcoming %}PRÓXIMAMENTE{% elif auction.is_active %}SUBASTA EN CURSO{% elif bid_count %}SUBASTADO{% else %}SUBASTA FINALIZADA{% endif %}</span>
       {% if current_user %}
         <form method="post" action="{{ url_for('auction.toggle_favorite', auction_id=auction.id) }}" class="mt-3">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -57,14 +57,14 @@
         <div class="alert alert-info mt-3 mb-2">Se subasta el lote completo{% if auction.quantity > 1 %} ({{ auction.quantity }} piezas){% endif %}.</div>
         <p class="text-secondary mb-1">Precio inicial <strong class="text-dark">{{ auction.starting_price|uyu }}</strong></p>
       {% endif %}
-      {% if auction.bids %}
+      {% if bid_count %}
         <small class="text-secondary">OFERTA ACTUAL{% if auction.sale_mode == "units" %} POR UNIDAD{% endif %}</small><div class="detail-price">{{ auction.current_price|uyu }}</div>
         {% if auction.sale_mode == "units" %}<p class="text-secondary mt-1">total actual: <strong class="text-dark">{{ (auction.current_price * auction.quantity)|uyu }}</strong></p>{% endif %}
       {% else %}
         <small class="text-secondary">TODAVÍA NO HAY OFERTAS</small>
       {% endif %}
       {% if auction.is_active %}
-        <div class="auction-countdown" data-auction-countdown data-deadline="{{ auction.closes_at_montevideo.timestamp()|int }}" data-has-bids="{{ 'true' if auction.bid_count else 'false' }}" role="timer" aria-live="off">
+        <div class="auction-countdown" data-auction-countdown data-deadline="{{ auction.closes_at_montevideo.timestamp()|int }}" data-has-bids="{{ 'true' if bid_count else 'false' }}" role="timer" aria-live="off">
           <span>TIEMPO RESTANTE</span>
           <strong data-countdown-value></strong>
         </div>
@@ -75,7 +75,7 @@
           {% if has_been_outbid %}<div class="alert alert-warning mt-4 mb-0">Superaron tu oferta. Ya no estás ganando.</div>{% endif %}
           {% if is_current_bidder %}
             <div class="alert alert-info mt-4 mb-0">Tu oferta es la más alta. Podés volver a ofertar cuando otro participante la supere.</div>
-          {% elif auction.bid_count %}
+          {% elif bid_count %}
             {% set bid_increment = minimum_bid_increment(auction.current_price) %}
             {% set minimum_offer = auction.current_price + bid_increment %}
             <form method="post" action="{{ url_for('auction.place_bid', auction_id=auction.id) }}" class="mt-4" data-bid-form>
@@ -101,13 +101,13 @@
       {% from "_auction_card.html" import render_auction_card with context %}
       <div class="row g-3">
         {% for related in related_auctions %}
-          <div class="col-6 col-lg-3">{{ render_auction_card(related, cover_photos.get(related.id), favorite_auction_ids) }}</div>
+          <div class="col-6 col-lg-3">{{ render_auction_card(related, cover_photos.get(related.id), favorite_auction_ids, bid_counts.get(related.id, 0)) }}</div>
         {% endfor %}
       </div>
     </section>
   {% endif %}
 </section>
-{% if auction.photos or auction.image_url %}
+{% if photos or auction.image_url %}
   <dialog class="photo-lightbox" data-photo-lightbox aria-label="Vista ampliada de las fotos del lote">
     <button class="photo-lightbox-close" type="button" data-lightbox-close aria-label="Cerrar foto ampliada">×</button>
     <button class="photo-lightbox-nav photo-lightbox-prev" type="button" data-lightbox-previous aria-label="Ver foto anterior">‹</button>
@@ -119,7 +119,7 @@
 {% endblock %}
 {% block scripts %}
   {{ super() }}
-  {% if auction.photos or auction.image_url %}
+  {% if photos or auction.image_url %}
     <script src="{{ url_for('static', filename='photo-lightbox.js') }}" defer></script>
   {% endif %}
 {% endblock %}
