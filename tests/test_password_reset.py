@@ -11,6 +11,7 @@ from models.user import User
 class PasswordResetConfig:
     TESTING = True
     SECRET_KEY = "password-reset-test-key"
+    PRIVATE_AREA_PASSWORD = "test-private-password"
     SMTP_HOST = "smtp.example.test"
     SMTP_PORT = 587
     SMTP_USERNAME = "sender@example.test"
@@ -45,6 +46,23 @@ class PasswordResetTest(unittest.TestCase):
     def csrf_token(self):
         with self.client.session_transaction() as session:
             return session["csrf_token"]
+
+    def test_tag_manager_is_present_on_public_pages_but_not_sensitive_pages(self):
+        public_page = self.client.get("/auth/recuperar-contrasena").get_data(as_text=True)
+        self.assertIn("GTM-5MZNPK2F", public_page)
+        self.assertIn("https://www.googletagmanager.com/ns.html?id=GTM-5MZNPK2F", public_page)
+
+        with self.app.app_context():
+            from routes.auth import _password_reset_serializer
+
+            user = User.query.one()
+            token = _password_reset_serializer().dumps(
+                {"user_id": user.id, "password_hash": user.password_hash}
+            )
+        for path in (f"/auth/restablecer-contrasena/{token}", "/area-privada"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn("GTM-5MZNPK2F", response.get_data(as_text=True))
 
     @patch("routes.auth.smtplib.SMTP")
     def test_password_reset_email_link_changes_password_and_expires_after_use(

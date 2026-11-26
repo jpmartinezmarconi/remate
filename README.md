@@ -64,6 +64,10 @@ En el área privada se elige la fecha de cierre de cada subasta y el cierre qued
 
 Desde la segunda oferta, el botón muestra y registra automáticamente el precio actual más un incremento, sin escribir ningún monto. Si otra persona oferta antes de confirmar, la página solicita revisar el nuevo importe. La primera oferta sigue ingresándose manualmente.
 
+## Estadísticas
+
+La web carga el contenedor de Google Tag Manager `GTM-5MZNPK2F`, excepto en el área privada y la página de recuperación con el enlace personal. Para obtener estadísticas en Google Analytics, configura y publica dentro del contenedor una etiqueta de Google para tu propiedad GA4 con un activador de todas las páginas. No configures etiquetas que envíen datos personales; revisa también los requisitos de privacidad y consentimiento aplicables antes de activar la medición.
+
 ## Mi cuenta y pagos
 
 Si un cliente olvida su contraseña, puede solicitar un enlace de recuperación por correo desde la página de ingreso. El enlace firmado vence en una hora y solo puede usarse una vez; el envío requiere la configuración SMTP existente.
